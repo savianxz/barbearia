@@ -1,5 +1,5 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useRef, useEffect } from 'react';
+import { motion, useInView } from 'framer-motion';
 import { ShieldCheck, Clock, Award } from 'lucide-react';
 import { shop } from '../data/mockData';
 
@@ -28,6 +28,23 @@ export const About: React.FC = () => {
     }
   ];
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const isInView = useInView(containerRef, { amount: 0.2, once: false });
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isInView) {
+      video.play().catch((err) => {
+        console.warn('Video playback was prevented or interrupted:', err);
+      });
+    } else {
+      video.pause();
+    }
+  }, [isInView]);
+
   return (
     <section id="sobre" className="py-24 sm:py-32 bg-bg-dark border-b border-border-premium relative overflow-hidden">
       {/* Decorative subtle ambient lights */}
@@ -38,6 +55,7 @@ export const About: React.FC = () => {
           
           {/* Editorial Photograph */}
           <motion.div 
+            ref={containerRef}
             initial={{ opacity: 0, x: -30 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, margin: '-100px' }}
@@ -45,10 +63,13 @@ export const About: React.FC = () => {
             className="lg:col-span-6 relative group"
           >
             <div className="absolute -inset-1 bg-gradient-to-r from-gold/10 to-transparent blur-lg opacity-50 group-hover:opacity-80 transition duration-1000" />
-            <div className="relative overflow-hidden aspect-[4/5] border border-border-premium">
-              <img 
-                src="/images/fachada.png" 
-                alt="Fachada da Barbearia F Street" 
+            <div className="relative overflow-hidden aspect-[4/5] border border-border-premium bg-black">
+              <video 
+                ref={videoRef}
+                src="/images/Instagram.mp4" 
+                muted
+                playsInline
+                loop
                 className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
               />
             </div>

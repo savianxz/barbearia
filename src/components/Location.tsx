@@ -5,7 +5,11 @@ import { shop } from '../data/mockData';
 
 export const Location: React.FC = () => {
   const handleOpenMaps = () => {
-    window.open(shop.addressMapLink, '_blank');
+    // Opens Google Maps Directions from user's current location (auto-detected by Google Maps)
+    window.open(
+      'https://www.google.com/maps/dir/?api=1&destination=Rua+Floriano+Peixoto,+488,+Esp%C3%ADrito+Santo+do+Pinhal,+SP,+Brasil&travelmode=driving',
+      '_blank'
+    );
   };
 
   return (
@@ -108,43 +112,54 @@ export const Location: React.FC = () => {
             </motion.div>
           </div>
 
-          {/* Premium Custom Map Representation */}
+          {/* Real Google Maps Embed */}
           <motion.div 
             initial={{ opacity: 0, scale: 0.98 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
             transition={{ duration: 0.8, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className="lg:col-span-7 relative flex items-center justify-center border border-border-premium bg-card-dark overflow-hidden min-h-[350px] lg:min-h-[450px]"
+            className="lg:col-span-7 relative flex flex-col border border-border-premium bg-card-dark overflow-hidden min-h-[350px] lg:min-h-[500px]"
           >
-            {/* Dark Styled Map Grid Graphics (Abstract Grid SVG for premium tech vibe) */}
-            <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]" />
-            
-            {/* Map Art Concept */}
-            <div className="relative z-10 w-full h-full p-8 flex flex-col justify-between items-center text-center">
-              {/* Elegant Graphic Element */}
-              <div className="w-full max-w-md border border-dashed border-border-premium p-6 relative bg-bg-dark/80 backdrop-blur-sm mt-auto mb-auto">
-                <span className="absolute -top-3 left-6 px-3 bg-card-dark text-[10px] uppercase font-bold tracking-widest text-gold border border-border-premium">
-                  {shop.name.toUpperCase()}
-                </span>
-                <p className="text-xs text-text-secondary leading-relaxed font-light mb-6">
-                  Nosso espaço premium fica localizado na tradicional Rua Floriano Peixoto em Espírito Santo do Pinhal - SP. Venha nos visitar para desfrutar de um café ou bebida cortesia enquanto recebe o melhor atendimento.
-                </p>
-                <div className="flex justify-center items-center gap-2 text-gold">
-                  <span className="w-2 h-2 bg-gold rounded-full animate-ping" />
-                  <span className="text-[10px] uppercase font-bold tracking-widest">Atendimento com Hora Marcada</span>
+            {/* Header badge */}
+            <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-bg-dark/90 backdrop-blur-sm border border-border-premium px-3 py-1.5">
+              <span className="w-2 h-2 bg-gold rounded-full animate-ping" />
+              <span className="text-[10px] uppercase font-bold tracking-widest text-gold">{shop.name}</span>
+            </div>
+
+            {/* Google Maps Iframe */}
+            <div className="flex-1 w-full relative" style={{ minHeight: '350px' }}>
+              <iframe
+                title="Localização Barbearia F Street"
+                src="https://maps.google.com/maps?q=Rua+Floriano+Peixoto,+488,+Esp%C3%ADrito+Santo+do+Pinhal,+SP,+Brasil&hl=pt-BR&z=17&output=embed"
+                className="absolute inset-0 w-full h-full border-0 grayscale contrast-[1.1] brightness-75"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                style={{ filter: 'grayscale(30%) contrast(1.1) brightness(0.8) saturate(1.3)' }}
+              />
+              {/* Dark overlay on top edges */}
+              <div className="absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-card-dark/50 to-transparent pointer-events-none z-[1]" />
+              <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-card-dark to-transparent pointer-events-none z-[1]" />
+            </div>
+
+            {/* Bottom action bar */}
+            <div className="relative z-10 p-4 bg-card-dark border-t border-border-premium flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-3 text-left">
+                <div className="p-2 bg-gold/10 border border-gold/30">
+                  <MapPin className="w-4 h-4 text-gold" />
+                </div>
+                <div>
+                  <p className="text-white text-xs font-semibold tracking-wide">Rua Floriano Peixoto, 488</p>
+                  <p className="text-text-secondary text-[10px] font-light">Centro, Espírito Santo do Pinhal - SP</p>
                 </div>
               </div>
+              <button
+                onClick={() => window.open('https://www.google.com/maps/dir/?api=1&destination=Rua+Floriano+Peixoto,+488,+Esp%C3%ADrito+Santo+do+Pinhal,+SP,+Brasil&destination_place_id=ChIJ&travelmode=driving', '_blank')}
+                className="flex-shrink-0 flex items-center gap-2 px-5 py-2.5 bg-gold text-bg-dark font-bold text-[10px] tracking-widest uppercase hover:bg-gold-hover transition-colors duration-300"
+              >
+                <Navigation className="w-3.5 h-3.5" />
+                Traçar Rota
+              </button>
             </div>
-            
-            {/* Abstract geographic styling in the background */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-30" xmlns="http://www.w3.org/2000/svg">
-              <path d="M 0 100 Q 150 150 300 100 T 600 200 T 900 150 T 1200 300" fill="none" stroke="rgba(255, 255, 255, 0.05)" strokeWidth="2" />
-              <path d="M 100 0 Q 300 200 200 400 T 400 600" fill="none" stroke="rgba(255, 255, 255, 0.05)" strokeWidth="1.5" />
-              <path d="M 500 0 Q 600 300 550 600" fill="none" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="3" />
-              <circle cx="300" cy="220" r="80" fill="none" stroke="rgba(212, 175, 55, 0.15)" strokeWidth="1" strokeDasharray="5,5" />
-              <circle cx="300" cy="220" r="10" fill="rgba(212, 175, 55, 0.8)" className="animate-pulse" />
-              <circle cx="300" cy="220" r="3" fill="#090909" />
-            </svg>
           </motion.div>
 
         </div>

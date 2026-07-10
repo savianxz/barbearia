@@ -9,7 +9,11 @@ export const Footer: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
           {/* Brand Info */}
           <div className="md:col-span-2">
-            <span className="font-display text-xl tracking-widest text-white block mb-4">{shop.name}</span>
+            <img 
+              src="/images/logo.jpg" 
+              alt={`${shop.name} Logo`} 
+              className="h-12 w-auto object-contain mb-4"
+            />
             <p className="text-xs font-light leading-relaxed max-w-sm mb-6">
               {shop.aboutText}
             </p>

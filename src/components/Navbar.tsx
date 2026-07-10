@@ -31,9 +31,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenBooking }) => {
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           {/* Logo */}
           <a href="#" className="flex items-center gap-2 group">
-            <span className="font-display text-2xl tracking-widest text-white group-hover:text-gold transition-colors duration-300">
-              {shop.logo}
-            </span>
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-sm border border-border-premium bg-black/60 flex items-center justify-center overflow-hidden group-hover:border-gold/50 transition-colors duration-300">
+                <img 
+                  src="/images/logo.jpg" 
+                  alt={`${shop.name} Logo`} 
+                  className="w-9 h-9 object-contain transition-transform duration-300 group-hover:scale-110"
+                />
+              </div>
+              <span className="font-display text-lg tracking-widest text-white group-hover:text-gold transition-colors duration-300 hidden sm:block">{shop.logo}</span>
+            </div>
           </a>
 
           {/* Desktop Navigation */}
@@ -91,7 +98,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenBooking }) => {
             >
               <div>
                 <div className="flex justify-between items-center mb-12">
-                  <span className="font-display text-xl tracking-widest">{shop.logo}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 border border-border-premium bg-black/60 flex items-center justify-center overflow-hidden">
+                      <img 
+                        src="/images/logo.jpg" 
+                        alt={`${shop.name} Logo`} 
+                        className="w-7 h-7 object-contain"
+                      />
+                    </div>
+                    <span className="font-display text-base tracking-widest text-white">{shop.logo}</span>
+                  </div>
                   <button
                     onClick={() => setMobileMenuOpen(false)}
                     className="p-2 text-text-secondary hover:text-white"
