@@ -85,3 +85,102 @@ textarea:-webkit-autofill:focus {
   -webkit-box-shadow: 0 0 0px 1000px #121212 inset;
   transition: background-color 5000s ease-in-out 0s;
 }
+
+/* ── MOBILE-FIRST GLOBAL TOKENS ────────────────────────────────────── */
+
+/* Disable tap highlight on all interactive elements */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent double-tap zoom on buttons & links */
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+
+/* ── TAP TARGET (min 44×44px — Apple HIG / WCAG) ─── */
+.tap-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── MOBILE CTA BUTTON ───────────────────────────── */
+.btn-mobile {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+}
+
+.btn-mobile:active {
+  transform: scale(0.97);
+}
+
+/* ── SCROLLBAR NONE ──────────────────────────────── */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── SAFE AREA UTILITIES ─────────────────────────── */
+.pb-safe {
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+.pt-safe {
+  padding-top: max(0px, env(safe-area-inset-top));
+}
+
+/* ── MOBILE STEPPER ──────────────────────────────── */
+.stepper-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  position: relative;
+  cursor: default;
+}
+
+.stepper-step::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  left: calc(50% + 14px);
+  width: calc(100% - 28px);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.stepper-step:last-child::after {
+  display: none;
+}
+
+.stepper-step.active::after,
+.stepper-step.completed::after {
+  background: #D4AF37;
+}
+
+/* ── REDUCE MOTION ───────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+

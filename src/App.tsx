@@ -48,9 +48,12 @@ function App() {
         date={booking.date}
         time={booking.time}
         name={booking.name}
-        phone={booking.phone}
+        whatsapp={booking.whatsapp}
+        email={booking.email}
         notes={booking.notes}
-        agreedToTerms={booking.agreedToTerms}
+        wantsReminders={booking.wantsReminders}
+        wantsPromotions={booking.wantsPromotions}
+        confirmationCode={booking.confirmationCode}
         isSubmitting={booking.isSubmitting}
         selectBarber={booking.selectBarber}
         selectService={booking.selectService}

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { Barber, Service } from '../data/mockData';
+import { processBooking } from '../services/bookingService';
 
 export type BookingStep = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -8,12 +9,15 @@ export interface BookingState {
   step: BookingStep;
   barber: Barber | 'first-available' | null;
   service: Service | null;
-  date: string | null; // Format YYYY-MM-DD
-  time: string | null; // Format HH:MM
+  date: string | null;       // Format YYYY-MM-DD
+  time: string | null;       // Format HH:MM
   name: string;
-  phone: string;
+  whatsapp: string;
+  email: string;
   notes: string;
-  agreedToTerms: boolean;
+  wantsReminders: boolean;
+  wantsPromotions: boolean;
+  confirmationCode: string | null;
 }
 
 const initialBookingState: Omit<BookingState, 'isOpen'> = {
@@ -23,9 +27,12 @@ const initialBookingState: Omit<BookingState, 'isOpen'> = {
   date: null,
   time: null,
   name: '',
-  phone: '',
+  whatsapp: '',
+  email: '',
   notes: '',
-  agreedToTerms: false
+  wantsReminders: true,
+  wantsPromotions: false,
+  confirmationCode: null,
 };
 
 export const useBooking = () => {
@@ -38,14 +45,13 @@ export const useBooking = () => {
       ...initialBookingState,
       barber: initialBarber || null,
       service: initialService || null,
-      step: initialBarber ? 2 : 1 // Skip step 1 if barber is preselected
+      step: initialBarber ? 2 : 1,
     });
     setIsOpen(true);
   }, []);
 
   const closeBooking = useCallback(() => {
     setIsOpen(false);
-    // Add brief delay to reset state to avoid flickering during close animation
     setTimeout(() => {
       setBooking(initialBookingState);
       setIsSubmitting(false);
@@ -56,10 +62,9 @@ export const useBooking = () => {
     setBooking(prev => ({
       ...prev,
       barber,
-      // If they change barber, we reset subsequent selections to maintain data consistency
       date: null,
       time: null,
-      step: 2
+      step: 2,
     }));
   }, []);
 
@@ -69,7 +74,7 @@ export const useBooking = () => {
       service,
       date: null,
       time: null,
-      step: 3
+      step: 3,
     }));
   }, []);
 
@@ -77,8 +82,8 @@ export const useBooking = () => {
     setBooking(prev => ({
       ...prev,
       date: dateStr,
-      time: null, // Reset time if date changes
-      step: 4
+      time: null,
+      // Do NOT auto-advance — user must click "Ver Horários" button
     }));
   }, []);
 
@@ -86,17 +91,26 @@ export const useBooking = () => {
     setBooking(prev => ({
       ...prev,
       time: timeStr,
-      step: 5
+      step: 5,
     }));
   }, []);
 
-  const setCustomerDetails = useCallback((details: { name: string; phone: string; notes?: string; agreedToTerms: boolean }) => {
+  const setCustomerDetails = useCallback((details: {
+    name: string;
+    whatsapp: string;
+    email?: string;
+    notes?: string;
+    wantsReminders: boolean;
+    wantsPromotions: boolean;
+  }) => {
     setBooking(prev => ({
       ...prev,
       name: details.name,
-      phone: details.phone,
+      whatsapp: details.whatsapp,
+      email: details.email || '',
       notes: details.notes || '',
-      agreedToTerms: details.agreedToTerms
+      wantsReminders: details.wantsReminders,
+      wantsPromotions: details.wantsPromotions,
     }));
   }, []);
 
@@ -106,7 +120,6 @@ export const useBooking = () => {
       if (prev.step === 2 && !prev.service) return prev;
       if (prev.step === 3 && !prev.date) return prev;
       if (prev.step === 4 && !prev.time) return prev;
-      
       const next = (prev.step + 1) as BookingStep;
       return { ...prev, step: next };
     });
@@ -114,10 +127,7 @@ export const useBooking = () => {
 
   const prevStep = useCallback(() => {
     setBooking(prev => {
-      // If we go back from step 2 and the barber was pre-selected upon opening, closing might be better,
-      // but going to step 1 lets them change the barber.
       if (prev.step === 1) return prev;
-      
       const next = (prev.step - 1) as BookingStep;
       return { ...prev, step: next };
     });
@@ -127,19 +137,69 @@ export const useBooking = () => {
     setBooking(prev => ({ ...prev, step }));
   }, []);
 
-  const submitBooking = useCallback(async () => {
-    if (!booking.name || !booking.phone || !booking.agreedToTerms) {
+  const submitBooking = useCallback(async (customerDetails: {
+    name: string;
+    whatsapp: string;
+    email?: string;
+    notes?: string;
+    wantsReminders: boolean;
+    wantsPromotions: boolean;
+  }): Promise<boolean> => {
+    if (!booking.barber || !booking.service || !booking.date || !booking.time) {
       return false;
     }
-    
+
     setIsSubmitting(true);
-    
-    // Simulate Supabase / API database write
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
+
+    const barberName =
+      booking.barber === 'first-available'
+        ? 'Primeiro Disponível'
+        : (booking.barber as Barber).name;
+
+    const barberId =
+      booking.barber === 'first-available'
+        ? 'first-available'
+        : (booking.barber as Barber).id;
+
+    const result = await processBooking(
+      {
+        name: customerDetails.name,
+        whatsapp: customerDetails.whatsapp,
+        email: customerDetails.email,
+        wantsReminders: customerDetails.wantsReminders,
+        wantsPromotions: customerDetails.wantsPromotions,
+      },
+      {
+        barberId,
+        barberName,
+        serviceId: booking.service.id,
+        serviceName: booking.service.name,
+        servicePrice: booking.service.price,
+        serviceDuration: booking.service.duration,
+        date: booking.date,
+        time: booking.time,
+        notes: customerDetails.notes,
+      }
+    );
+
     setIsSubmitting(false);
-    setBooking(prev => ({ ...prev, step: 6 }));
-    return true;
+
+    if (result.success && result.data) {
+      setBooking(prev => ({
+        ...prev,
+        name: customerDetails.name,
+        whatsapp: customerDetails.whatsapp,
+        email: customerDetails.email || '',
+        notes: customerDetails.notes || '',
+        wantsReminders: customerDetails.wantsReminders,
+        wantsPromotions: customerDetails.wantsPromotions,
+        confirmationCode: result.data!.appointment.confirmationCode || null,
+        step: 6,
+      }));
+      return true;
+    }
+
+    return false;
   }, [booking]);
 
   return {
@@ -156,6 +216,6 @@ export const useBooking = () => {
     nextStep,
     prevStep,
     setStep,
-    submitBooking
+    submitBooking,
   };
 };
