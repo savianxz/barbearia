@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { About } from './components/About';
@@ -9,9 +10,19 @@ import { CTASection } from './components/CTASection';
 import { Footer } from './components/Footer';
 import { BookingModal } from './components/booking/BookingModal';
 import { useBooking } from './hooks/useBooking';
+import { supabase } from './services/supabase/client';
 
 function App() {
   const booking = useBooking();
+
+  useEffect(() => {
+    async function test() {
+      const { data, error } = await supabase.auth.getSession();
+      console.log('Supabase Data:', data);
+      console.log('Supabase Error:', error);
+    }
+    test();
+  }, []);
 
   return (
     <div className="bg-bg-dark text-text-primary min-h-screen font-sans antialiased">
@@ -55,6 +66,7 @@ function App() {
         wantsPromotions={booking.wantsPromotions}
         confirmationCode={booking.confirmationCode}
         isSubmitting={booking.isSubmitting}
+        submitError={booking.submitError}
         selectBarber={booking.selectBarber}
         selectService={booking.selectService}
         selectDate={booking.selectDate}
@@ -63,6 +75,7 @@ function App() {
         prevStep={booking.prevStep}
         nextStep={booking.nextStep}
         submitBooking={booking.submitBooking}
+        validateCustomTime={booking.validateCustomTime}
       />
     </div>
   );

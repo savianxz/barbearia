@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { Barber, Service } from '../data/mockData';
-import { processBooking } from '../services/bookingService';
+import { bookingService } from '../services/booking';
 
 export type BookingStep = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -39,6 +39,7 @@ export const useBooking = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [booking, setBooking] = useState<Omit<BookingState, 'isOpen'>>(initialBookingState);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const openBooking = useCallback((initialBarber?: Barber | 'first-available', initialService?: Service) => {
     setBooking({
@@ -47,6 +48,7 @@ export const useBooking = () => {
       service: initialService || null,
       step: initialBarber ? 2 : 1,
     });
+    setSubmitError(null);
     setIsOpen(true);
   }, []);
 
@@ -55,6 +57,7 @@ export const useBooking = () => {
     setTimeout(() => {
       setBooking(initialBookingState);
       setIsSubmitting(false);
+      setSubmitError(null);
     }, 300);
   }, []);
 
@@ -91,7 +94,7 @@ export const useBooking = () => {
     setBooking(prev => ({
       ...prev,
       time: timeStr,
-      step: 5,
+      // Do NOT auto-advance — user must manually click confirm button
     }));
   }, []);
 
@@ -113,6 +116,30 @@ export const useBooking = () => {
       wantsPromotions: details.wantsPromotions,
     }));
   }, []);
+
+  /**
+   * Validates a custom time string (typed by user) against the engine.
+   * Returns null if valid, or an error message if there is a conflict.
+   */
+  const validateCustomTime = useCallback(async (timeStr: string): Promise<string | null> => {
+    if (!booking.barber || !booking.service || !booking.date) return 'Dados insuficientes para validar o horário.';
+
+    const barberId = booking.barber === 'first-available'
+      ? 'first-available'
+      : (booking.barber as Barber).id;
+
+    const res = await bookingService.validateBooking(
+      'f-street',
+      barberId,
+      booking.service.duration,
+      booking.date,
+      timeStr
+    );
+
+    if (!res.success) return res.error || 'Erro ao validar horário.';
+    if (!res.data) return res.error || 'Horário indisponível.';
+    return null; // Valid!
+  }, [booking.barber, booking.service, booking.date]);
 
   const nextStep = useCallback(() => {
     setBooking(prev => {
@@ -150,6 +177,7 @@ export const useBooking = () => {
     }
 
     setIsSubmitting(true);
+    setSubmitError(null);
 
     const barberName =
       booking.barber === 'first-available'
@@ -161,7 +189,7 @@ export const useBooking = () => {
         ? 'first-available'
         : (booking.barber as Barber).id;
 
-    const result = await processBooking(
+    const result = await bookingService.createBooking(
       {
         name: customerDetails.name,
         whatsapp: customerDetails.whatsapp,
@@ -170,6 +198,7 @@ export const useBooking = () => {
         wantsPromotions: customerDetails.wantsPromotions,
       },
       {
+        shopId: 'f-street',
         barberId,
         barberName,
         serviceId: booking.service.id,
@@ -199,12 +228,14 @@ export const useBooking = () => {
       return true;
     }
 
+    setSubmitError(result.error || 'Erro ao processar agendamento.');
     return false;
   }, [booking]);
 
   return {
     isOpen,
     isSubmitting,
+    submitError,
     ...booking,
     openBooking,
     closeBooking,
@@ -217,5 +248,6 @@ export const useBooking = () => {
     prevStep,
     setStep,
     submitBooking,
+    validateCustomTime,
   };
 };

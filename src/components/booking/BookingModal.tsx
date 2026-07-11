@@ -6,7 +6,8 @@ import {
   Scissors, CalendarDays, Star,
   MessageCircle, Shield, ArrowRight
 } from 'lucide-react';
-import { shop, getAvailableTimeSlots, type Barber, type Service } from '../../data/mockData';
+import { shop, type Barber, type Service } from '../../data/mockData';
+import { bookingService } from '../../services/booking';
 import type { BookingStep } from '../../hooks/useBooking';
 
 interface BookingModalProps {
@@ -25,6 +26,7 @@ interface BookingModalProps {
   wantsPromotions: boolean;
   confirmationCode: string | null;
   isSubmitting: boolean;
+  submitError: string | null;
   selectBarber: (barber: Barber | 'first-available') => void;
   selectService: (service: Service) => void;
   selectDate: (date: string) => void;
@@ -47,6 +49,7 @@ interface BookingModalProps {
     wantsReminders: boolean;
     wantsPromotions: boolean;
   }) => Promise<boolean>;
+  validateCustomTime: (timeStr: string) => Promise<string | null>;
 }
 
 // ── STEPPER CONFIG ───────────────────────────────────────────────────────────
@@ -74,6 +77,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   wantsPromotions,
   confirmationCode,
   isSubmitting,
+  submitError,
   selectBarber,
   selectService,
   selectDate,
@@ -81,6 +85,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   prevStep,
   nextStep,
   submitBooking,
+  validateCustomTime,
 }) => {
   // ── Body scroll lock ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -119,6 +124,56 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     setFormError('');
   };
 
+  // ── Custom time input state and validation ───────────────────────────────
+  const [customTime, setCustomTime] = useState('');
+  const [customTimeError, setCustomTimeError] = useState<string | null>(null);
+  const [validatingCustomTime, setValidatingCustomTime] = useState(false);
+
+  // Sync customTime when time selection changes
+  useEffect(() => {
+    if (isOpen) {
+      setCustomTime(time || '');
+      setCustomTimeError(null);
+    }
+  }, [isOpen, time]);
+
+  const handleCustomTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, '');
+    if (val.length > 4) val = val.slice(0, 4);
+
+    let formatted = val;
+    if (val.length > 2) {
+      const hh = parseInt(val.slice(0, 2));
+      const mm = parseInt(val.slice(2));
+
+      // Limit hours to 0-23
+      const validHH = Math.min(Math.max(hh, 0), 23);
+      const strHH = String(validHH).padStart(2, '0');
+
+      // Limit minutes to 0-59
+      const validMM = Math.min(Math.max(mm, 0), 59);
+      const strMM = String(validMM).padStart(2, '0');
+
+      formatted = `${strHH}:${val.length === 3 ? val.slice(2) : strMM}`;
+    }
+
+    setCustomTime(formatted);
+    setCustomTimeError(null);
+
+    // If a full valid time (HH:MM) is typed, validate against the engine before selecting
+    if (formatted.length === 5) {
+      setValidatingCustomTime(true);
+      validateCustomTime(formatted).then(err => {
+        setValidatingCustomTime(false);
+        if (err) {
+          setCustomTimeError(err);
+        } else {
+          selectTime(formatted);
+        }
+      });
+    }
+  };
+
   // ── Ripple ─────────────────────────────────────────────────────────────────
   const handleRipple = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -136,7 +191,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     const ok = await submitBooking({ name: formName, whatsapp: formWhatsapp, email: formEmail, notes: formNotes, wantsReminders: formReminders, wantsPromotions: formPromotions });
     clearInterval(interval);
     setSubmitProgress(100);
-    if (!ok) setFormError('Ocorreu um erro. Tente novamente.');
+    if (!ok) setFormError(submitError || 'Ocorreu um erro. Verifique o horário e tente novamente.');
   };
 
   // ── Calendar ───────────────────────────────────────────────────────────────
@@ -168,11 +223,39 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
   }, [date]);
 
-  const availableSlotsList = useMemo(() => {
-    if (!date) return [];
+  const [availableSlotsList, setAvailableSlotsList] = useState<string[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!date) {
+      setAvailableSlotsList([]);
+      return;
+    }
+    const selectedDate = date;
     const bId = barber === 'first-available' || !barber ? 'first-available' : barber.id;
-    return getAvailableTimeSlots(bId, date);
-  }, [barber, date]);
+    const duration = service?.duration ?? 30;
+
+    let active = true;
+    async function loadSlots() {
+      setLoadingSlots(true);
+      try {
+        const res = await bookingService.getAvailableSlots('f-street', bId, duration, selectedDate);
+        if (res.success && res.data && active) {
+          setAvailableSlotsList(res.data);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar slots:', err);
+      } finally {
+        if (active) setLoadingSlots(false);
+      }
+    }
+
+    loadSlots();
+    return () => {
+      active = false;
+    };
+  }, [barber, date, service, isOpen]);
 
   const categorizedSlots = useMemo(() => {
     const morning: string[] = [], afternoon: string[] = [], evening: string[] = [];
@@ -468,21 +551,90 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       <h5 className="text-[10px] uppercase font-bold tracking-widest text-text-secondary mb-3 border-b border-border-premium/40 pb-1.5">{label}</h5>
                       {/* 3 cols on mobile (wider tap targets), 4 on desktop */}
                       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                        {slots.map((slot) => (
-                          <button key={slot} onClick={() => selectTime(slot)}
-                            className="min-h-[52px] border border-border-premium bg-card-dark hover:border-gold hover:bg-gold hover:text-bg-dark text-white font-semibold text-sm transition-all duration-200 active:scale-95">
-                            {slot}
-                          </button>
-                        ))}
+                        {slots.map((slot) => {
+                          const isSelected = time === slot;
+                          return (
+                            <button
+                              key={slot}
+                              onClick={() => selectTime(slot)}
+                              className={`
+                                min-h-[52px] border font-semibold text-sm transition-all duration-200 active:scale-95
+                                ${isSelected
+                                  ? 'bg-gold border-gold text-bg-dark font-bold ring-2 ring-gold ring-offset-1 ring-offset-neutral-900'
+                                  : 'border-border-premium bg-card-dark hover:border-gold hover:bg-gold/10 hover:text-gold text-white'}
+                              `}
+                            >
+                              {slot}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   );
                 })}
 
-                {availableSlotsList.length === 0 && (
+                {loadingSlots ? (
+                  <div className="py-10 flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-gold animate-pulse">
+                      Buscando horários...
+                    </span>
+                  </div>
+                ) : availableSlotsList.length === 0 ? (
                   <div className="py-10 text-center text-text-secondary text-sm">
                     Sem horários disponíveis. Volte e escolha outro dia.
                   </div>
+                ) : null}
+
+                {/* ── Custom/Personalized time input section ── */}
+                <div className="flex flex-col gap-2 border-t border-border-premium/50 pt-4 mt-2">
+                  <label htmlFor="custom-time-input" className="text-[10px] uppercase font-bold tracking-widest text-text-secondary flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-gold" /> Ou digite um horário personalizado (Ex: 12:20):
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="custom-time-input"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="HH:MM"
+                      value={customTime}
+                      onChange={handleCustomTimeChange}
+                      className={`w-full bg-neutral-900 border focus:outline-none p-4 min-h-[52px] text-base text-white placeholder-neutral-600 transition-colors duration-200
+                        ${customTimeError ? 'border-red-500/60 focus:border-red-500' : 'border-border-premium focus:border-gold'}`}
+                    />
+                    {validatingCustomTime && (
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+                    )}
+                    {!validatingCustomTime && time === customTime && customTime.length === 5 && !customTimeError && (
+                      <Check className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gold" />
+                    )}
+                  </div>
+                  {customTimeError && (
+                    <div className="flex items-center gap-2 text-red-400 text-[11px] font-semibold">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{customTimeError}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Manual Time Selection Confirmation Section */}
+                {time ? (
+                  <motion.div key="time-confirm" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-3 mt-2">
+                    <div className="flex items-center justify-between bg-neutral-900 border border-gold/30 px-4 py-3">
+                      <div>
+                        <span className="text-[9px] uppercase font-bold tracking-widest text-text-secondary block">Horário selecionado</span>
+                        <span className="text-sm font-semibold text-gold">{time}h</span>
+                      </div>
+                      <Check className="w-4 h-4 text-gold" />
+                    </div>
+                    <button onClick={nextStep}
+                      className="w-full min-h-[56px] bg-gold hover:bg-gold-hover text-bg-dark font-bold text-sm tracking-widest uppercase flex items-center justify-center gap-2 active:scale-[0.98] transition-all duration-200">
+                      Confirmar Horário
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </motion.div>
+                ) : (
+                  <p className="text-center text-xs text-text-secondary font-light">Selecione ou digite um horário para continuar</p>
                 )}
               </motion.div>
             )}
