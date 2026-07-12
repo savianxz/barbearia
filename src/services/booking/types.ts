@@ -41,6 +41,8 @@ export interface Shop {
   instagram: string;
   whatsappLink: string;
   precision: AgendaPrecision;
+  buffer?: number;                 // Buffer between appointments in minutes
+  lastStartAllowedTime?: string;   // Last allowed time to start an appointment (HH:MM)
 }
 
 export interface DailySchedule {

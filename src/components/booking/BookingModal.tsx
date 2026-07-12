@@ -1,13 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  X, ChevronLeft, ChevronRight, Check, Sparkles,
-  AlertCircle, User, Smartphone, Mail, Clock,
-  Scissors, CalendarDays, Star,
-  MessageCircle, Shield, ArrowRight
-} from 'lucide-react';
-import { shop, type Barber, type Service } from '../../data/mockData';
-import { bookingService } from '../../services/booking';
+import { X, ChevronLeft, ChevronRight, Check, Sparkles, AlertCircle, User, Smartphone, Mail, Clock, Scissors, CalendarDays, Star, MessageCircle, Shield, ArrowRight } from 'lucide-react';
+import type { Barber, Service } from '../../types/scheduling';
+import { availabilityService } from '../../services/availabilityService';
 import type { BookingStep } from '../../hooks/useBooking';
 
 interface BookingModalProps {
@@ -50,6 +45,12 @@ interface BookingModalProps {
     wantsPromotions: boolean;
   }) => Promise<boolean>;
   validateCustomTime: (timeStr: string) => Promise<string | null>;
+  validationReason: any | null;
+  suggestions: any | null;
+  barbers: Barber[];
+  services: Service[];
+  shopName: string;
+  shopId: string;
 }
 
 // ── STEPPER CONFIG ───────────────────────────────────────────────────────────
@@ -86,6 +87,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   nextStep,
   submitBooking,
   validateCustomTime,
+  validationReason: _validationReason,
+  suggestions,
+  barbers,
+  services,
+  shopName,
+  shopId,
 }) => {
   // ── Body scroll lock ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -234,15 +241,15 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
     const selectedDate = date;
     const bId = barber === 'first-available' || !barber ? 'first-available' : barber.id;
-    const duration = service?.duration ?? 30;
+    const duration = service?.duration_minutes ?? 30;
 
     let active = true;
     async function loadSlots() {
       setLoadingSlots(true);
       try {
-        const res = await bookingService.getAvailableSlots('f-street', bId, duration, selectedDate);
-        if (res.success && res.data && active) {
-          setAvailableSlotsList(res.data);
+        const res = await availabilityService.getAvailableSlots(shopId, bId, duration, selectedDate);
+        if (active) {
+          setAvailableSlotsList(res);
         }
       } catch (err) {
         console.error('Erro ao carregar slots:', err);
@@ -271,7 +278,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   if (!isOpen) return null;
 
   const barberName = barber === 'first-available' ? 'Primeiro Disponível' : barber?.name ?? '';
-  const barberImage = barber && barber !== 'first-available' ? barber.image : null;
+  const barberImage = barber && barber !== 'first-available' ? barber.avatar_url : null;
 
   const stepVariants = {
     initial: { opacity: 0, x: 16 },
@@ -332,7 +339,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 )}
                 <div>
                   <span className="text-[9px] uppercase font-bold tracking-widest text-gold block">
-                    {shop.name} · Passo {step} de 5
+                    {shopName} · Passo {step} de 5
                   </span>
                   <h3 className="text-sm md:text-base font-semibold uppercase tracking-wider text-white leading-tight">
                     {stepTitle}
@@ -397,23 +404,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             {step === 1 && (
               <motion.div key="s1" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={stepTransition}
                 className="p-4 sm:p-6 flex flex-col gap-3">
-                {shop.barbers.map((b) => (
+                {barbers.map((b) => (
                   <button
                     key={b.id}
                     onClick={() => selectBarber(b)}
                     className="group flex items-center gap-4 p-4 text-left border border-border-premium bg-neutral-900 hover:border-gold/30 active:scale-[0.99] transition-all duration-200 w-full"
                   >
                     <div className="w-14 h-14 sm:w-16 sm:h-16 bg-neutral-800 overflow-hidden flex-shrink-0">
-                      <img src={b.image} alt={b.name} loading="lazy" className="w-full h-full object-cover" />
+                       <img src={b.avatar_url ?? ''} alt={b.name} loading="lazy" className="w-full h-full object-cover" />
                     </div>
                     <div className="flex flex-col flex-grow text-left min-w-0">
                       <h4 className="font-display font-semibold text-white tracking-wide uppercase text-sm group-hover:text-gold transition-colors">{b.name}</h4>
-                      <span className="text-[10px] text-gold uppercase tracking-wider font-semibold">{b.role}</span>
-                      <span className="text-[10px] text-text-secondary mt-0.5 truncate">{b.experience}</span>
+                      <span className="text-[10px] text-text-secondary mt-0.5 truncate">Barbeiro Profissional</span>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <Star className="w-3 h-3 text-gold fill-gold" />
-                      <span className="text-xs font-semibold text-white">{b.rating.toFixed(1)}</span>
+                      <span className="text-xs font-semibold text-white">5.0</span>
                     </div>
                   </button>
                 ))}
@@ -439,7 +445,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             {step === 2 && (
               <motion.div key="s2" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={stepTransition}
                 className="p-4 sm:p-6 flex flex-col gap-3">
-                {shop.services.map((s) => (
+                {services.map((s) => (
                   <button
                     key={s.id}
                     onClick={() => selectService(s)}
@@ -447,12 +453,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                   >
                     <div className="flex flex-col pr-4 min-w-0 flex-grow">
                       <h4 className="font-semibold text-white tracking-wide text-sm uppercase group-hover:text-gold transition-colors truncate">{s.name}</h4>
-                      <p className="text-text-secondary text-[11px] font-light mt-0.5 line-clamp-1">{s.description}</p>
                     </div>
                     <div className="flex items-center gap-3 flex-shrink-0 text-right">
                       <div className="flex flex-col">
                         <span className="text-base font-bold text-gold">R${s.price}</span>
-                        <span className="text-[10px] text-text-secondary">{s.duration}min</span>
+                        <span className="text-[10px] text-text-secondary">{s.duration_minutes}min</span>
                       </div>
                       <ChevronRight className="w-4 h-4 text-gold/50 group-hover:text-gold transition-colors" />
                     </div>
@@ -610,9 +615,89 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     )}
                   </div>
                   {customTimeError && (
-                    <div className="flex items-center gap-2 text-red-400 text-[11px] font-semibold">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>{customTimeError}</span>
+                    <div className="flex flex-col gap-3 text-[11px] mt-1.5">
+                      <div className="flex items-center gap-2 text-red-400 font-semibold">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                        <span>{customTimeError}</span>
+                      </div>
+
+                      {/* Suggestions list */}
+                      {suggestions && (
+                        <div className="bg-neutral-950 border border-neutral-800 p-3 flex flex-col gap-2.5 rounded-sm">
+                          {/* Scenario 2: No more slots today */}
+                          {suggestions.suggestedAlternativeTomorrow && (
+                            <div className="flex flex-col gap-1.5">
+                              <span className="text-text-secondary font-medium">Hoje não há mais horários disponíveis para este serviço.</span>
+                              <div className="flex flex-wrap gap-2 items-center justify-between mt-1">
+                                <span className="text-gold font-bold">Próximo disponível: {
+                                  suggestions.suggestedAlternativeTomorrow.date === (() => {
+                                    const tomorrow = new Date();
+                                    tomorrow.setDate(tomorrow.getDate() + 1);
+                                    return tomorrow.toISOString().split('T')[0];
+                                  })() ? 'Amanhã' : suggestions.suggestedAlternativeTomorrow.date.split('-').reverse().slice(0, 2).join('/')
+                                } às {suggestions.suggestedAlternativeTomorrow.time}h</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (suggestions.suggestedAlternativeTomorrow) {
+                                      selectDate(suggestions.suggestedAlternativeTomorrow.date);
+                                      selectTime(suggestions.suggestedAlternativeTomorrow.time);
+                                      setCustomTime(suggestions.suggestedAlternativeTomorrow.time);
+                                    }
+                                  }}
+                                  className="px-2.5 py-1.5 bg-gold hover:bg-gold-hover text-bg-dark font-bold text-[9px] uppercase tracking-wider transition-colors duration-200 cursor-pointer active:scale-95"
+                                >
+                                  Agendar amanhã às {suggestions.suggestedAlternativeTomorrow.time}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Scenario 1: Slot today */}
+                          {!suggestions.suggestedAlternativeTomorrow && suggestions.suggestedAlternativeToday && (
+                            <div className="flex flex-col gap-1.5">
+                              <span className="text-text-secondary font-medium">Esse horário não está disponível.</span>
+                              <div className="flex flex-wrap gap-2 items-center justify-between mt-1">
+                                <span className="text-gold font-bold">Próximo horário disponível: {suggestions.suggestedAlternativeToday}h</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (suggestions.suggestedAlternativeToday) {
+                                      selectTime(suggestions.suggestedAlternativeToday);
+                                      setCustomTime(suggestions.suggestedAlternativeToday);
+                                    }
+                                  }}
+                                  className="px-2.5 py-1.5 bg-gold hover:bg-gold-hover text-bg-dark font-bold text-[9px] uppercase tracking-wider transition-colors duration-200 cursor-pointer active:scale-95"
+                                >
+                                  Usar {suggestions.suggestedAlternativeToday}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Scenario 3: Multiple suggestions */}
+                          {suggestions.nearbyAlternatives && suggestions.nearbyAlternatives.length > 0 && (
+                            <div className="flex flex-col gap-1.5 border-t border-neutral-900 pt-2.5 mt-1">
+                              <span className="text-text-secondary font-medium">Outras opções próximas:</span>
+                              <div className="flex flex-wrap gap-2">
+                                {suggestions.nearbyAlternatives.map((altTime: string) => (
+                                  <button
+                                    key={altTime}
+                                    type="button"
+                                    onClick={() => {
+                                      selectTime(altTime);
+                                      setCustomTime(altTime);
+                                    }}
+                                    className="px-2.5 py-1 bg-neutral-900 hover:bg-gold/10 hover:text-gold text-white font-semibold text-[10px] border border-border-premium transition-all duration-200 cursor-pointer"
+                                  >
+                                    {altTime}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -755,7 +840,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                           <div className={`w-5 h-5 border flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors ${formPromotions ? 'bg-gold border-gold text-bg-dark' : 'border-border-premium'}`}>
                             {formPromotions && <Check className="w-3 h-3" />}
                           </div>
-                          <span className="text-xs text-text-secondary leading-relaxed font-light">Quero receber promoções e novidades da {shop.name}.</span>
+                          <span className="text-xs text-text-secondary leading-relaxed font-light">Quero receber promoções e novidades da {shopName}.</span>
                         </label>
                       </div>
 

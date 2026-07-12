@@ -5,9 +5,10 @@ import { shop } from '../data/mockData';
 
 interface NavbarProps {
   onOpenBooking: () => void;
+  onOpenAdmin: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenBooking }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onOpenBooking, onOpenAdmin }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -84,10 +85,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenBooking }) => {
           </div>
 
           {/* Desktop CTA */}
-          <div className="hidden md:block">
+          <div className="hidden md:flex items-center gap-3">
+            <button
+              onClick={onOpenAdmin}
+              className="px-4 py-2.5 border border-neutral-850 hover:border-gold/30 text-text-secondary hover:text-white bg-transparent hover:bg-neutral-900/60 transition-all duration-300 font-semibold text-xs tracking-widest uppercase flex items-center gap-1.5 cursor-pointer"
+            >
+              Painel Admin
+            </button>
             <button
               onClick={onOpenBooking}
-              className="px-6 py-2.5 border border-gold text-gold hover:text-bg-dark bg-transparent hover:bg-gold glow-gold-hover transition-all duration-300 font-semibold text-xs tracking-widest uppercase flex items-center gap-2"
+              className="px-6 py-2.5 border border-gold text-gold hover:text-bg-dark bg-transparent hover:bg-gold glow-gold-hover transition-all duration-300 font-semibold text-xs tracking-widest uppercase flex items-center gap-2 cursor-pointer"
             >
               <Calendar className="w-3.5 h-3.5" />
               Agendar Horário
@@ -188,6 +195,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenBooking }) => {
                 transition={{ delay: 0.35, duration: 0.4 }}
                 className="flex flex-col gap-3 pb-safe mt-6"
               >
+                {/* Painel Admin */}
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAdmin();
+                  }}
+                  className="w-full min-h-[52px] flex items-center justify-center gap-2 border border-gold/45 text-gold hover:bg-gold/5 transition-colors font-semibold text-xs tracking-widest uppercase cursor-pointer"
+                >
+                  Painel Admin
+                </button>
                 {/* WhatsApp */}
                 <a
                   href={shop.whatsappLink}

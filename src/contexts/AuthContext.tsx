@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../services/supabase/client';
-import { authService } from '../services/auth';
-import type { SignUpParams, AuthResponse } from '../services/auth';
+import { authService, validateAdminAccess } from '../services/auth';
+import type { SignUpParams, AuthResponse, AdminAccessResult } from '../services/auth';
 import type { AuthState } from '../types/auth';
 
 interface AuthContextType extends AuthState {
+  adminAccess: AdminAccessResult | null;
   signUp: (params: SignUpParams) => Promise<AuthResponse<{ user: User | null; session: Session | null }>>;
   signIn: (email: string, password: string) => Promise<AuthResponse<{ user: User; session: Session }>>;
   signOut: () => Promise<{ error: string | null }>;
@@ -21,76 +22,73 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loading: true,
     error: null,
   });
+  const [adminAccess, setAdminAccess] = useState<AdminAccessResult | null>(null);
 
-  const refreshProfile = async (currentUser: User | null = state.user) => {
-    if (!currentUser) {
-      setState(prev => ({ ...prev, profile: null, loading: false }));
-      return;
+  /**
+   * Carrega o profile e valida o acesso administrativo.
+   * Fonte exclusiva: tabela public.profiles via validateAdminAccess().
+   */
+  const loadProfileAndAccess = async (user: User) => {
+    const { data: profileData, error: profileError } = await authService.getProfile(user.id);
+
+    if (profileError) {
+      console.error('[AuthContext] Erro ao carregar profile:', profileError);
     }
 
-    setState(prev => ({ ...prev, loading: true }));
-    const { data: profileData, error } = await authService.getProfile(currentUser.id);
-    
+    const access = await validateAdminAccess(user);
+    setAdminAccess(access);
+
     setState(prev => ({
       ...prev,
-      profile: profileData,
-      error: error,
+      profile: profileData || null,
       loading: false,
+      error: profileError,
     }));
   };
 
+  const refreshProfile = async () => {
+    if (!state.user) return;
+    setState(prev => ({ ...prev, loading: true }));
+    await loadProfileAndAccess(state.user);
+  };
+
   useEffect(() => {
+    console.log('[Audit] AuthProvider inicializado');
     let isMounted = true;
 
-    // 1. Check current session on mount
     async function initializeAuth() {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user && isMounted) {
-          const { data: profileData, error } = await authService.getProfile(session.user.id);
-          setState({
-            user: session.user,
-            profile: profileData,
-            loading: false,
-            error: error,
-          });
-        } else if (isMounted) {
-          setState(prev => ({ ...prev, loading: false }));
-        }
-      } catch (err: any) {
-        console.error('[AuthContext] Erro ao inicializar sessão:', err);
-        if (isMounted) {
-          setState(prev => ({
-            ...prev,
-            loading: false,
-            error: err.message || 'Erro ao carregar sessão inicial.',
-          }));
-        }
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.error('[Audit] AuthProvider - Erro ao obter sessão:', sessionError.message);
+        if (isMounted) setState(prev => ({ ...prev, loading: false, error: sessionError.message }));
+        return;
+      }
+
+      if (session?.user && isMounted) {
+        console.log('[Audit] AuthProvider - Sessão encontrada para user.id:', session.user.id);
+        setState(prev => ({ ...prev, user: session.user, loading: true }));
+        await loadProfileAndAccess(session.user);
+      } else if (isMounted) {
+        console.log('[Audit] AuthProvider - Nenhuma sessão ativa.');
+        setState(prev => ({ ...prev, loading: false }));
       }
     }
 
     initializeAuth();
 
-    // 2. Real-time auth subscription listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         if (!isMounted) return;
+        console.log('[Audit] AuthProvider - onAuthStateChange evento:', event);
 
         if (session?.user) {
-          const { data: profileData, error } = await authService.getProfile(session.user.id);
-          setState({
-            user: session.user,
-            profile: profileData,
-            loading: false,
-            error: error,
-          });
+          console.log('[Audit] AuthProvider - onAuthStateChange user.id:', session.user.id);
+          setState(prev => ({ ...prev, user: session.user, loading: true }));
+          await loadProfileAndAccess(session.user);
         } else {
-          setState({
-            user: null,
-            profile: null,
-            loading: false,
-            error: null,
-          });
+          setAdminAccess(null);
+          setState({ user: null, profile: null, loading: false, error: null });
         }
       }
     );
@@ -104,34 +102,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const handleSignUp = async (params: SignUpParams) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
     const result = await authService.signUp(params);
-    if (result.error) {
-      setState(prev => ({ ...prev, loading: false, error: result.error }));
-    }
+    if (result.error) setState(prev => ({ ...prev, loading: false, error: result.error }));
     return result;
   };
 
   const handleSignIn = async (email: string, password: string) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
     const result = await authService.signIn(email, password);
-    if (result.error) {
-      setState(prev => ({ ...prev, loading: false, error: result.error }));
-    }
+    if (result.error) setState(prev => ({ ...prev, loading: false, error: result.error }));
+    // Profile e adminAccess serão carregados automaticamente via onAuthStateChange
     return result;
   };
 
   const handleSignOut = async () => {
     setState(prev => ({ ...prev, loading: true, error: null }));
+    localStorage.removeItem('fstreet_mock_session');
     const result = await authService.signOut();
-    if (!result.error) {
-      setState({
-        user: null,
-        profile: null,
-        loading: false,
-        error: null,
-      });
-    } else {
-      setState(prev => ({ ...prev, loading: false, error: result.error }));
-    }
+    setAdminAccess(null);
+    setState({ user: null, profile: null, loading: false, error: null });
     return result;
   };
 
@@ -139,10 +127,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         ...state,
+        adminAccess,
         signUp: handleSignUp,
         signIn: handleSignIn,
         signOut: handleSignOut,
-        refreshProfile: () => refreshProfile(state.user),
+        refreshProfile,
       }}
     >
       {children}

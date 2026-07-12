@@ -3,16 +3,15 @@ import {
   getBarberSlotsForDay,
   getUnionSlotsForDay,
   calculateEndTime,
-  checkOverlap,
-  isBlockActiveOnDate,
-  timeToMinutes,
-  minutesToTime,
-  getTodayDateStr,
-  getCurrentTimeStr
+  validateBookingWithReason,
+  type ConflictReason,
+  type BookingSuggestions,
+  type DetailedValidationResult
 } from './engine';
-import type { Customer, Appointment, ServiceResponse, BarberSchedule } from './types';
+import type { Customer, Appointment, ServiceResponse, BarberSchedule, Shop, TimeBlock } from './types';
 
 export type { Customer, Appointment, ServiceResponse, BarberSchedule, TimeBlock, AgendaPrecision, Shop } from './types';
+export type { ConflictReason, BookingSuggestions, DetailedValidationResult };
 
 export const bookingService = {
   /**
@@ -38,17 +37,20 @@ export const bookingService = {
       const appointments = mockDb.getAppointments();
       const blocks = mockDb.getTimeBlocks();
 
+      const buffer = shop.buffer || 0;
+      const lastStartAllowedTime = shop.lastStartAllowedTime;
+
       let slots: string[] = [];
 
       if (barberId === 'first-available' || !barberId) {
         const shopSchedules = schedules.filter(s => s.shopId === shopId);
-        slots = getUnionSlotsForDay(shopSchedules, appointments, blocks, serviceDuration, dateStr, shop.precision);
+        slots = getUnionSlotsForDay(shopSchedules, appointments, blocks, serviceDuration, dateStr, shop.precision, buffer, lastStartAllowedTime);
       } else {
         const schedule = schedules.find(s => s.barberId === barberId && s.shopId === shopId);
         if (!schedule) {
           return { data: [], error: 'Agenda do barbeiro não encontrada para esta barbearia.', success: false };
         }
-        slots = getBarberSlotsForDay(schedule, appointments, blocks, serviceDuration, dateStr, shop.precision);
+        slots = getBarberSlotsForDay(schedule, appointments, blocks, serviceDuration, dateStr, shop.precision, buffer, lastStartAllowedTime);
       }
 
       return { data: slots, error: null, success: true };
@@ -66,88 +68,39 @@ export const bookingService = {
     serviceDuration: number,
     dateStr: string,
     timeStr: string
-  ): Promise<ServiceResponse<boolean>> {
+  ): Promise<ServiceResponse<DetailedValidationResult>> {
     try {
+      const shops = mockDb.getShops();
+      const shop = shops.find(s => s.id === shopId);
+      if (!shop) {
+        return { data: null, error: 'Barbearia não encontrada.', success: false };
+      }
+
       const schedules = mockDb.getSchedules();
       const appointments = mockDb.getAppointments();
       const blocks = mockDb.getTimeBlocks();
 
-      const startTimeMins = timeToMinutes(timeStr);
-      const endTimeMins = startTimeMins + serviceDuration;
-      const endTimeStr = minutesToTime(endTimeMins);
+      const buffer = shop.buffer || 0;
+      const lastStartAllowedTime = shop.lastStartAllowedTime;
 
-      // Validar se o horário de início já passou no relógio (caso seja hoje)
-      const todayStr = getTodayDateStr();
-      if (todayStr === dateStr && startTimeMins <= timeToMinutes(getCurrentTimeStr())) {
-        return { data: false, error: 'O horário selecionado já passou.', success: true };
-      }
+      const shopSchedules = schedules.filter(s => s.shopId === shopId);
 
-      const checkBarberAvailable = (sched: BarberSchedule): boolean => {
-        const [year, month, day] = dateStr.split('-').map(Number);
-        const dateObj = new Date(year, month - 1, day);
-        const weekday = dateObj.getDay();
+      const result = validateBookingWithReason(
+        shopSchedules,
+        appointments,
+        blocks,
+        barberId,
+        serviceDuration,
+        dateStr,
+        timeStr,
+        shop.precision,
+        buffer,
+        lastStartAllowedTime
+      );
 
-        // Escala diária de trabalho
-        const daily = sched.weeklyConfig[weekday];
-        if (!daily || !daily.isOpen) {
-          return false;
-        }
-
-        const workStartMins = timeToMinutes(daily.startTime);
-        const workEndMins = timeToMinutes(daily.endTime);
-
-        // Agendamento deve caber inteiramente dentro do expediente de trabalho
-        if (startTimeMins < workStartMins || endTimeMins > workEndMins) {
-          return false;
-        }
-
-        // Checar pausas
-        for (const pause of sched.pauses) {
-          if (checkOverlap(timeStr, endTimeStr, pause.startTime, pause.endTime)) {
-            return false;
-          }
-        }
-
-        // Checar conflito com agendamentos confirmados
-        const activeAppts = appointments.filter(
-          appt => appt.barberId === sched.barberId &&
-                  appt.date === dateStr &&
-                  appt.status !== 'cancelled'
-        );
-        for (const appt of activeAppts) {
-          if (checkOverlap(timeStr, endTimeStr, appt.startTime, appt.endTime)) {
-            return false;
-          }
-        }
-
-        // Checar conflito com bloqueios ativos (pontuais/recorrentes)
-        const activeBlocks = blocks.filter(
-          block => block.barberId === sched.barberId &&
-                   isBlockActiveOnDate(block, dateStr)
-        );
-        for (const block of activeBlocks) {
-          if (checkOverlap(timeStr, endTimeStr, block.startTime, block.endTime)) {
-            return false;
-          }
-        }
-
-        return true;
-      };
-
-      if (barberId === 'first-available') {
-        const shopSchedules = schedules.filter(s => s.shopId === shopId);
-        const hasAny = shopSchedules.some(checkBarberAvailable);
-        return { data: hasAny, error: hasAny ? null : 'Sem barbeiros disponíveis para esse intervalo.', success: true };
-      } else {
-        const schedule = schedules.find(s => s.barberId === barberId && s.shopId === shopId);
-        if (!schedule) {
-          return { data: false, error: 'Escala do barbeiro não configurada.', success: false };
-        }
-        const isFree = checkBarberAvailable(schedule);
-        return { data: isFree, error: isFree ? null : 'Horário indisponível (conflito de escala, pausas ou bloqueios).', success: true };
-      }
+      return { data: result, error: null, success: true };
     } catch (err: any) {
-      return { data: false, error: err.message || 'Erro ao validar agendamento.', success: false };
+      return { data: null, error: err.message || 'Erro ao validar agendamento.', success: false };
     }
   },
 
@@ -183,7 +136,7 @@ export const bookingService = {
 
       // 1. Validar disponibilidade do intervalo
       const valRes = await this.validateBooking(shopId, barberId, serviceDuration, date, time);
-      if (!valRes.success || !valRes.data) {
+      if (!valRes.success || !valRes.data?.isValid) {
         return { data: null, error: valRes.error || 'O horário selecionado não está mais disponível.', success: false };
       }
 
@@ -195,10 +148,15 @@ export const bookingService = {
         const schedules = mockDb.getSchedules().filter(s => s.shopId === shopId);
         const appointments = mockDb.getAppointments();
         const blocks = mockDb.getTimeBlocks();
+        const shops = mockDb.getShops();
+        const shop = shops.find(s => s.id === shopId);
+        const precision = shop?.precision || '15';
+        const buffer = shop?.buffer || 0;
+        const lastStartAllowedTime = shop?.lastStartAllowedTime;
         
         let assignedBarberId = '';
         for (const schedule of schedules) {
-          const slots = getBarberSlotsForDay(schedule, appointments, blocks, serviceDuration, date, '15');
+          const slots = getBarberSlotsForDay(schedule, appointments, blocks, serviceDuration, date, precision, buffer, lastStartAllowedTime);
           if (slots.includes(time)) {
             assignedBarberId = schedule.barberId;
             break;
@@ -208,7 +166,7 @@ export const bookingService = {
           // Fallback completo usando validação detalhada
           for (const schedule of schedules) {
             const tempVal = await this.validateBooking(shopId, schedule.barberId, serviceDuration, date, time);
-            if (tempVal.success && tempVal.data) {
+            if (tempVal.success && tempVal.data?.isValid) {
               assignedBarberId = schedule.barberId;
               break;
             }
@@ -323,7 +281,7 @@ export const bookingService = {
 
       // Validar nova disponibilidade do intervalo completo
       const valRes = await this.validateBooking(appt.shopId, appt.barberId, appt.serviceDuration, newDate, newTime);
-      if (!valRes.success || !valRes.data) {
+      if (!valRes.success || !valRes.data?.isValid) {
         return { data: null, error: 'O novo horário selecionado colide ou está indisponível.', success: false };
       }
 
@@ -337,6 +295,53 @@ export const bookingService = {
       return { data: appt, error: null, success: true };
     } catch (err: any) {
       return { data: null, error: err.message || 'Erro ao reagendar compromisso.', success: false };
+    }
+  },
+
+  // ── Configurações de Agenda do Painel Admin ──
+  getShops(): Shop[] {
+    return mockDb.getShops();
+  },
+
+  saveShop(shop: Shop): void {
+    mockDb.saveShop(shop);
+  },
+
+  getSchedules(): BarberSchedule[] {
+    return mockDb.getSchedules();
+  },
+
+  saveSchedule(sched: BarberSchedule): void {
+    mockDb.saveSchedule(sched);
+  },
+
+  getTimeBlocks(): TimeBlock[] {
+    return mockDb.getTimeBlocks();
+  },
+
+  saveTimeBlock(block: TimeBlock): void {
+    mockDb.saveTimeBlock(block);
+  },
+
+  deleteTimeBlock(id: string): void {
+    const blocks = mockDb.getTimeBlocks();
+    const filtered = blocks.filter(b => b.id !== id);
+    mockDb.saveTimeBlocks(filtered);
+  },
+
+  // ── Admin convenience methods ──
+
+  getAppointments(): Appointment[] {
+    return mockDb.getAppointments();
+  },
+
+  updateAppointmentStatus(appointmentId: string, status: 'pending' | 'confirmed' | 'cancelled' | 'completed'): void {
+    const appts = mockDb.getAppointments();
+    const appt = appts.find(a => a.id === appointmentId);
+    if (appt) {
+      appt.status = status;
+      appt.updatedAt = new Date().toISOString();
+      mockDb.saveAppointment(appt);
     }
   }
 };

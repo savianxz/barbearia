@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { About } from './components/About';
@@ -9,36 +9,58 @@ import { Location } from './components/Location';
 import { CTASection } from './components/CTASection';
 import { Footer } from './components/Footer';
 import { BookingModal } from './components/booking/BookingModal';
+import { AdminApp } from './admin/AdminApp';
 import { useBooking } from './hooks/useBooking';
-import { supabase } from './services/supabase/client';
+import { useCurrentShop } from './hooks/useCurrentShop';
+import { useBarbers } from './hooks/useBarbers';
+import { useServices } from './hooks/useServices';
+
+function useRoute() {
+  const [path, setPath] = useState(window.location.pathname);
+  useEffect(() => {
+    const onPop = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  const navigate = (to: string) => {
+    window.history.pushState({}, '', to);
+    setPath(to);
+  };
+  return { path, navigate };
+}
 
 function App() {
-  const booking = useBooking();
+  const { path, navigate } = useRoute();
+  
+  // Real data
+  const { data: shop } = useCurrentShop();
+  const shopId = shop?.id;
+  const { data: barbers = [] } = useBarbers(shopId ?? '');
+  const { data: services = [] } = useServices(shopId ?? '');
 
-  useEffect(() => {
-    async function test() {
-      const { data, error } = await supabase.auth.getSession();
-      console.log('Supabase Data:', data);
-      console.log('Supabase Error:', error);
-    }
-    test();
-  }, []);
+  const booking = useBooking(shopId);
 
+  console.log('[Audit] App renderizado');
+  console.log('[Audit] Path:', path);
+  console.log('[Audit] Shop:', shop);
+
+  // Admin Panel Route
+  if (path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/settings')) {
+    return <AdminApp initialPath={path} />;
+  }
+
+  // Landing Page
   return (
     <div className="bg-bg-dark text-text-primary min-h-screen font-sans antialiased">
-      {/* Header navigation */}
-      <Navbar onOpenBooking={() => booking.openBooking()} />
+      <Navbar onOpenBooking={() => booking.openBooking()} onOpenAdmin={() => navigate('/admin')} />
 
-      {/* Premium Sections */}
       <main>
         <Hero onOpenBooking={() => booking.openBooking()} />
         <About />
         
-        {/* Selecting a barber pre-loads them and skips to step 2 (service selection) */}
-        <Barbers onSelectBarber={(barber) => booking.openBooking(barber)} />
-        
-        {/* Selecting a service pre-loads it and skips to step 3 (date selection) */}
-        <Services onSelectService={(service) => booking.openBooking('first-available', service)} />
+        {/* We can pass real data to these components later, for now we keep them to maintain design */}
+        <Barbers onSelectBarber={(b: any) => booking.openBooking(b)} />
+        <Services onSelectService={(s: any) => booking.openBooking('first-available', s)} />
         
         <Reviews />
         <Location />
@@ -46,10 +68,8 @@ function App() {
         <CTASection onOpenBooking={() => booking.openBooking()} />
       </main>
 
-      {/* Footer */}
       <Footer />
 
-      {/* Modal centralizado premium */}
       <BookingModal
         isOpen={booking.isOpen}
         onClose={booking.closeBooking}
@@ -76,6 +96,13 @@ function App() {
         nextStep={booking.nextStep}
         submitBooking={booking.submitBooking}
         validateCustomTime={booking.validateCustomTime}
+        validationReason={booking.validationReason}
+        suggestions={booking.suggestions}
+        // Novas props reais:
+        barbers={barbers.filter(b => b.is_active)}
+        services={services.filter(s => s.is_active)}
+        shopName={shop?.name || 'Barbearia Premium'}
+        shopId={shopId || ''}
       />
     </div>
   );

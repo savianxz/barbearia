@@ -250,6 +250,21 @@ export const mockDb = {
     setStorageItem(KEYS.BLOCKS, blocks);
   },
 
+  saveTimeBlocks(blocks: TimeBlock[]): void {
+    setStorageItem(KEYS.BLOCKS, blocks);
+  },
+
+  saveSchedule(sched: BarberSchedule): void {
+    const schedules = this.getSchedules();
+    const idx = schedules.findIndex(s => s.barberId === sched.barberId && s.shopId === sched.shopId);
+    if (idx >= 0) {
+      schedules[idx] = sched;
+    } else {
+      schedules.push(sched);
+    }
+    setStorageItem(KEYS.SCHEDULES, schedules);
+  },
+
   getCustomers(): Customer[] {
     return getStorageItem(KEYS.CUSTOMERS, DEFAULT_CUSTOMERS);
   },
