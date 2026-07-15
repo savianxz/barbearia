@@ -19,6 +19,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [state, setState] = useState<AuthState>({
     user: null,
     profile: null,
+    staff: null,
     loading: true,
     error: null,
   });
@@ -41,6 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setState(prev => ({
       ...prev,
       profile: profileData || null,
+      staff: access.staff || null,
       loading: false,
       error: profileError,
     }));
@@ -88,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await loadProfileAndAccess(session.user);
         } else {
           setAdminAccess(null);
-          setState({ user: null, profile: null, loading: false, error: null });
+          setState({ user: null, profile: null, staff: null, loading: false, error: null });
         }
       }
     );
@@ -119,7 +121,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('fstreet_mock_session');
     const result = await authService.signOut();
     setAdminAccess(null);
-    setState({ user: null, profile: null, loading: false, error: null });
+    setState({ user: null, profile: null, staff: null, loading: false, error: null });
     return result;
   };
 

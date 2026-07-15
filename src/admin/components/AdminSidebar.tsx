@@ -36,7 +36,7 @@ interface AdminSidebarProps {
 }
 
 const SidebarContent: React.FC<AdminSidebarProps> = ({ activePage, onNavigate, onMobileClose }) => {
-  const { profile, signOut } = useAuth();
+  const { profile, staff, signOut } = useAuth();
 
   const handleLogout = async () => {
     await signOut();
@@ -122,7 +122,7 @@ const SidebarContent: React.FC<AdminSidebarProps> = ({ activePage, onNavigate, o
           </div>
           <div className="min-w-0">
             <p className="text-[11px] font-bold text-white/70 truncate">{profile?.full_name || 'Carregando...'}</p>
-            <p className="text-[9px] uppercase tracking-wider text-white/30 font-semibold">{getRoleLabel(profile?.role)}</p>
+            <p className="text-[9px] uppercase tracking-wider text-white/30 font-semibold">{getRoleLabel(staff?.role)}</p>
           </div>
         </div>
       </div>

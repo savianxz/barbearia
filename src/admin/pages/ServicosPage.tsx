@@ -78,8 +78,8 @@ const ServiceForm: React.FC<ServiceFormProps> = ({ initial, shopId, onSave, load
 
 // ─── Page ─────────────────────────────────────────────────────
 export const ServicosPage: React.FC = () => {
-  const { profile } = useAuth();
-  const shopId = profile?.shop_id ?? '';
+  const { staff } = useAuth();
+  const shopId = staff?.shop_id ?? '';
 
   const { data: services = [], isLoading, isError, refetch } = useServices(shopId);
   const createMutation = useCreateService(shopId);

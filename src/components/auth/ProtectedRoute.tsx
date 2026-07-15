@@ -18,7 +18,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   allowedRoles,
   fallbackRedirect = '/login'
 }) => {
-  const { user, profile, loading } = useAuth();
+  const { user, staff, loading } = useAuth();
 
   // Se ainda estiver carregando a sessão, podemos exibir um loading screen minimalista e premium
   if (loading) {
@@ -45,8 +45,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     return null;
   }
 
+  const effectiveRole = staff?.role || 'customer';
+
   // Se houver restrição de Role e a Role atual do usuário não for permitida
-  if (allowedRoles && (!profile || !allowedRoles.includes(profile.role))) {
+  if (allowedRoles && !allowedRoles.includes(effectiveRole)) {
     return (
       <div className="min-h-screen bg-bg-dark flex items-center justify-center p-6 text-center">
         <div className="max-w-md border border-border-premium bg-card-dark p-8 flex flex-col items-center gap-6">

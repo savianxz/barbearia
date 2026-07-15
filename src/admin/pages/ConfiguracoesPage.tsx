@@ -18,8 +18,8 @@ const tabConfig: { id: ConfigTab; label: string; icon: any }[] = [
 ];
 
 export const ConfiguracoesPage: React.FC = () => {
-  const { profile } = useAuth();
-  const shopId = profile?.shop_id;
+  const { staff } = useAuth();
+  const shopId = staff?.shop_id;
 
   const [activeTab, setActiveTab] = useState<ConfigTab>('informacoes');
   

@@ -28,8 +28,8 @@ function formatTime(isoString: string) {
 }
 
 export const AgendaPage: React.FC = () => {
-  const { profile } = useAuth();
-  const shopId = profile?.shop_id ?? '';
+  const { staff } = useAuth();
+  const shopId = staff?.shop_id ?? '';
 
   useRealtimeAppointments(shopId); // Listen to realtime updates
 

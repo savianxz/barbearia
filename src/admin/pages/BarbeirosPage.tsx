@@ -75,8 +75,8 @@ const BarberForm: React.FC<BarberFormProps> = ({ initial, shopId, onSave, loadin
 
 // ─── Page ─────────────────────────────────────────────────────
 export const BarbeirosPage: React.FC = () => {
-  const { profile } = useAuth();
-  const shopId = profile?.shop_id ?? '';
+  const { staff } = useAuth();
+  const shopId = staff?.shop_id ?? '';
 
   const { data: barbers = [], isLoading, isError, refetch } = useBarbers(shopId);
   const createMutation = useCreateBarber(shopId);

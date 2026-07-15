@@ -1,53 +1,182 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Brain, MessageCircle, RefreshCw, AlertTriangle, TrendingDown, Zap, Users } from 'lucide-react';
 import { SegmentBadge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
-import { crmService } from '../../services/crm';
-import type { CrmCustomer, CrmInsight, CrmNotification, CrmSegment } from '../../services/crm/types';
+import { supabase } from '../../services/supabase/client';
+import { useAuth } from '../../contexts/AuthContext';
+import type { CrmSegment } from '../../services/crm/types';
+
+// Tipos locais
+interface CrmCustomerReal {
+  id: string;
+  name: string;
+  whatsapp: string;
+  lastVisit: string | null;
+  daysSinceLastVisit: number | null;
+  totalSpent: number;
+  segment: CrmSegment;
+  returnProbability: number | null;
+}
+
+interface CrmInsightReal {
+  id: string;
+  title: string;
+  description: string;
+  severity: 'critical' | 'warning' | 'info';
+  count: number;
+  totalValue?: number;
+  actionLabel?: string;
+}
 
 const severityIcon: Record<string, React.ReactNode> = {
   critical: <AlertTriangle className="w-4 h-4 text-red-400" />,
   warning:  <TrendingDown className="w-4 h-4 text-orange-400" />,
   info:     <Zap className="w-4 h-4 text-blue-400" />,
 };
+
 const severityBorder: Record<string, string> = {
   critical: 'border-red-500/25 bg-red-500/5',
   warning:  'border-orange-500/25 bg-orange-500/5',
   info:     'border-blue-500/25 bg-blue-500/5',
 };
 
-const recoverySegments: CrmSegment[] = ['at_risk', 'inactive', 'never_returned'];
+const recoverySegments: CrmSegment[] = ['at_risk', 'inactive'];
+
+const calculateDays = (dateStr: string | null): number | null => {
+  if (!dateStr) return null;
+  const last = new Date(dateStr).getTime();
+  const now = new Date().getTime();
+  return Math.max(0, Math.floor((now - last) / (1000 * 3600 * 24)));
+};
 
 export const CrmPage: React.FC = () => {
-  const [insights, setInsights] = useState<CrmInsight[]>([]);
-  const [customers, setCustomers] = useState<CrmCustomer[]>([]);
-  const [notifications, setNotifications] = useState<CrmNotification[]>([]);
+  const { staff } = useAuth();
+  const shopId = staff?.shop_id ?? '';
+
+  const [insights, setInsights] = useState<CrmInsightReal[]>([]);
+  const [customers, setCustomers] = useState<CrmCustomerReal[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [activeSegment, setActiveSegment] = useState<CrmSegment | 'all'>('all');
+  const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (!shopId) return;
     setLoading(true);
-    const [ins, custs, notifs] = await Promise.all([
-      crmService.getInsights('f-street'),
-      crmService.getCrmCustomers('f-street'),
-      crmService.getPendingNotifications('f-street'),
-    ]);
-    setInsights(ins.data ?? []);
-    setCustomers(custs.data ?? []);
-    setNotifications(notifs.data ?? []);
+    setError(null);
+
+    // Buscar clientes da loja
+    const { data: custData, error: custErr } = await supabase
+      .from('customers')
+      .select('id, name, phone, last_visit, total_spent')
+      .eq('shop_id', shopId);
+
+    if (custErr) { setError(custErr.message); setLoading(false); return; }
+
+    const crmCustomers: CrmCustomerReal[] = [];
+    let atRiskCount = 0;
+    let inactiveCount = 0;
+    let vipRecoveryCount = 0;
+    let atRiskValue = 0;
+    let inactiveValue = 0;
+
+    for (const c of (custData || [])) {
+      const days = calculateDays(c.last_visit);
+      let segment: CrmSegment = 'new';
+      
+      if (days !== null) {
+        if (days > 90) {
+          segment = 'inactive';
+          inactiveCount++;
+          inactiveValue += Number(c.total_spent);
+          if (c.total_spent > 300) {
+            vipRecoveryCount++;
+          }
+        } else if (days > 45) {
+          segment = 'at_risk';
+          atRiskCount++;
+          atRiskValue += Number(c.total_spent);
+        } else {
+          segment = 'loyal'; // Simplificação
+        }
+      }
+
+      // Probabilidade de retorno (heurística simples para UI)
+      let prob = null;
+      if (days !== null) {
+        prob = Math.max(0, Math.min(100, Math.round(100 - (days / 1.5))));
+      }
+
+      crmCustomers.push({
+        id: c.id,
+        name: c.name,
+        whatsapp: c.phone || '',
+        lastVisit: c.last_visit,
+        daysSinceLastVisit: days,
+        totalSpent: Number(c.total_spent),
+        segment,
+        returnProbability: prob
+      });
+    }
+
+    // Gerar insights baseados nos números reais
+    const generatedInsights: CrmInsightReal[] = [];
+    
+    if (atRiskCount > 0) {
+      generatedInsights.push({
+        id: 'ins-risk',
+        title: 'Clientes em Risco de Evasão',
+        description: 'Clientes que não retornam há mais de 45 dias.',
+        severity: 'warning',
+        count: atRiskCount,
+        totalValue: atRiskValue,
+      });
+    }
+
+    if (inactiveCount > 0) {
+      generatedInsights.push({
+        id: 'ins-inactive',
+        title: 'Base Inativa',
+        description: 'Clientes sem visitas há mais de 90 dias.',
+        severity: 'critical',
+        count: inactiveCount,
+        totalValue: inactiveValue,
+      });
+    }
+
+    if (vipRecoveryCount > 0) {
+      generatedInsights.push({
+        id: 'ins-vip',
+        title: 'Recuperação VIP',
+        description: 'Clientes de alto valor (> R$ 300) que estão inativos.',
+        severity: 'critical',
+        count: vipRecoveryCount,
+      });
+    }
+
+    if (generatedInsights.length === 0) {
+      generatedInsights.push({
+        id: 'ins-ok',
+        title: 'Retenção Saudável',
+        description: 'Nenhum alerta crítico de evasão no momento.',
+        severity: 'info',
+        count: custData.length,
+      });
+    }
+
+    setCustomers(crmCustomers);
+    setInsights(generatedInsights);
     setLoading(false);
-  };
+  }, [shopId]);
 
   const handleSync = async () => {
     setSyncing(true);
-    await crmService.syncCrm('f-street');
     await load();
     setSyncing(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const recoveryCustomers = customers.filter(c => recoverySegments.includes(c.segment));
   const displayCustomers = activeSegment === 'all'
@@ -55,13 +184,18 @@ export const CrmPage: React.FC = () => {
     : recoveryCustomers.filter(c => c.segment === activeSegment);
 
   const templateMessages: Record<string, string> = {
-    at_risk:        'Ei, {nome}! Faz um tempinho que não te vemos aqui na F Street. Que tal marcar seu horário? 💈',
-    inactive:       '{nome}, sentimos sua falta! Seu próximo corte está aguardando. Acesse o link e agende agora.',
-    never_returned: 'Olá {nome}! Sua experiência na F Street foi boa? Gostaríamos de te ver novamente. ✂️',
+    at_risk:  'Ei, {nome}! Faz um tempinho que não te vemos na barbearia. Que tal marcar seu horário? 💈',
+    inactive: '{nome}, sentimos sua falta! Seu próximo corte está aguardando. Acesse o link e agende agora.',
   };
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-5 py-4 text-red-400 text-sm">
+          Erro ao carregar dados: {error}
+        </div>
+      )}
+
       {/* Header action */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
         <div>
@@ -74,7 +208,7 @@ export const CrmPage: React.FC = () => {
           className="flex items-center gap-2 px-4 py-2 bg-[#D4AF37]/15 border border-[#D4AF37]/30 text-[#D4AF37] hover:bg-[#D4AF37]/25 rounded-xl text-[12px] font-semibold transition-all cursor-pointer disabled:opacity-50"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-          {syncing ? 'Sincronizando...' : 'Sincronizar CRM'}
+          {syncing ? 'Atualizando...' : 'Atualizar CRM'}
         </button>
       </motion.div>
 
@@ -90,7 +224,7 @@ export const CrmPage: React.FC = () => {
               </div>
             ))
           ) : insights.length === 0 ? (
-            <p className="text-white/25 text-sm col-span-3 py-4">Nenhum insight disponível. Sincronize o CRM.</p>
+            <p className="text-white/25 text-sm col-span-3 py-4">Nenhum insight disponível. Atualize o CRM.</p>
           ) : (
             insights.map(ins => (
               <div key={ins.id} className={`border rounded-xl p-4 ${severityBorder[ins.severity] ?? 'border-white/8 bg-white/3'}`}>
@@ -100,7 +234,7 @@ export const CrmPage: React.FC = () => {
                   <span className="text-[13px] font-bold text-white flex-shrink-0">{ins.count}</span>
                 </div>
                 <p className="text-[11px] text-white/40 leading-relaxed">{ins.description}</p>
-                {ins.totalValue && ins.totalValue > 0 && (
+                {ins.totalValue !== undefined && ins.totalValue > 0 && (
                   <p className="text-[11px] font-semibold text-[#D4AF37] mt-2">
                     R$ {ins.totalValue.toFixed(0)} em risco
                   </p>
@@ -129,7 +263,7 @@ export const CrmPage: React.FC = () => {
                   activeSegment === seg ? 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30' : 'bg-white/6 text-white/35 hover:text-white'
                 }`}
               >
-                {seg === 'all' ? 'Todos' : seg === 'at_risk' ? 'Em Risco' : seg === 'inactive' ? 'Inativos' : 'Sem Retorno'}
+                {seg === 'all' ? 'Todos' : seg === 'at_risk' ? 'Em Risco' : 'Inativos'}
               </button>
             ))}
           </div>
@@ -142,9 +276,7 @@ export const CrmPage: React.FC = () => {
             {displayCustomers.map(c => {
               const msgTemplate = templateMessages[c.segment] ?? '';
               const waMsg = encodeURIComponent(msgTemplate.replace('{nome}', c.name.split(' ')[0]));
-              const returnPct = c.metrics.daysUntilEstimatedReturn !== null
-                ? Math.max(0, Math.min(100, Math.round((1 - c.metrics.daysUntilEstimatedReturn / 30) * 100)))
-                : null;
+              
               return (
                 <div key={c.id} className="px-4 py-4 flex items-center gap-4 hover:bg-white/2 transition-colors">
                   {/* Avatar */}
@@ -159,18 +291,18 @@ export const CrmPage: React.FC = () => {
                       <SegmentBadge segment={c.segment} small />
                     </div>
                     <p className="text-[11px] text-white/35 mt-0.5">
-                      Último atendimento: {c.metrics.lastAppointmentDate
-                        ? `há ${c.metrics.daysSinceLastVisit} dias`
+                      Último atendimento: {c.lastVisit
+                        ? `há ${c.daysSinceLastVisit} dias`
                         : 'nunca retornou'}
                     </p>
                   </div>
 
                   {/* Return probability */}
-                  {returnPct !== null && (
+                  {c.returnProbability !== null && (
                     <div className="hidden sm:block text-center flex-shrink-0">
                       <p className="text-[9px] uppercase tracking-wider text-white/25 mb-1">Prob. Retorno</p>
-                      <p className={`text-[14px] font-bold ${returnPct > 60 ? 'text-emerald-400' : returnPct > 30 ? 'text-amber-400' : 'text-red-400'}`}>
-                        {returnPct}%
+                      <p className={`text-[14px] font-bold ${c.returnProbability > 60 ? 'text-emerald-400' : c.returnProbability > 30 ? 'text-amber-400' : 'text-red-400'}`}>
+                        {c.returnProbability}%
                       </p>
                     </div>
                   )}
@@ -178,7 +310,7 @@ export const CrmPage: React.FC = () => {
                   {/* Ticket */}
                   <div className="hidden md:block text-right flex-shrink-0">
                     <p className="text-[9px] uppercase tracking-wider text-white/25 mb-0.5">Gasto Total</p>
-                    <p className="text-[13px] font-bold text-white">R$ {c.metrics.totalSpent.toFixed(0)}</p>
+                    <p className="text-[13px] font-bold text-white">R$ {c.totalSpent.toFixed(0)}</p>
                   </div>
 
                   {/* WhatsApp action */}
@@ -197,29 +329,6 @@ export const CrmPage: React.FC = () => {
           </div>
         )}
       </motion.div>
-
-      {/* Pending notifications */}
-      {notifications.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-          <h3 className="text-[11px] font-semibold tracking-widest uppercase text-white/30 mb-3">
-            Fila de Notificações ({notifications.length})
-          </h3>
-          <div className="bg-[#111111] border border-white/6 rounded-xl divide-y divide-white/4">
-            {notifications.slice(0, 5).map(n => (
-              <div key={n.id} className="px-4 py-3 flex items-center gap-3">
-                <Brain className="w-4 h-4 text-[#D4AF37] flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[12px] font-semibold text-white">{n.customerName}</p>
-                  <p className="text-[11px] text-white/35">{n.templateKey.replace(/_/g, ' ')} · {n.channel}</p>
-                </div>
-                <span className="text-[10px] text-white/25 flex-shrink-0">
-                  {new Date(n.scheduledAt).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })}
-                </span>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-      )}
     </div>
   );
 };

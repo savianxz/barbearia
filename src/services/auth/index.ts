@@ -21,6 +21,7 @@ export interface AuthResponse<T> {
 export interface AdminAccessResult {
   authorized: boolean;
   profile: Profile | null;
+  staff: StaffRecord | null;
   reason?: string;
 }
 
@@ -28,55 +29,83 @@ const ADMIN_ROLES: UserRole[] = ['platform_admin', 'owner', 'barber'];
 
 /**
  * Única função responsável por validar acesso administrativo.
- * Fonte exclusiva de autorização: tabela public.profiles.
+ * Fonte exclusiva de autorização: tabela public.staff (e profiles para identidade).
  * Jamais lê user.user_metadata ou app_metadata para autorização.
  */
 export async function validateAdminAccess(user: User): Promise<AdminAccessResult> {
   console.group('AUTHORIZATION');
   console.log('User ID:', user.id);
 
-  const { data: profile, error: profileError } = await supabase
+  // 1. Busca o perfil básico (DEBUG MODE: sem maybeSingle)
+  const { data: profileDataRaw, error: profileError } = await supabase
     .from('profiles')
-    .select('id, shop_id, role, is_active')
-    .eq('id', user.id)
-    .maybeSingle();
+    .select('*')
+    .eq('id', user.id);
+
+  console.log("USER ID:", user.id);
+  console.log("PROFILE DATA:", profileDataRaw);
+  console.log("PROFILE ERROR:", profileError);
+
+  const profile = profileDataRaw?.[0];
 
   if (profileError) {
     console.error('Supabase error fetching profile:', profileError.message);
     console.groupEnd();
-    return { authorized: false, profile: null, reason: `Erro ao buscar perfil: ${profileError.message}` };
+    return { authorized: false, profile: null, staff: null, reason: `Erro ao buscar perfil: ${profileError.message}` };
   }
-
-  console.log('Profile:', profile);
-  console.log('Role:', profile?.role);
-  console.log('Shop:', profile?.shop_id);
-  console.log('Active:', profile?.is_active);
 
   if (!profile) {
     console.log('RESULTADO: NEGADO — perfil não encontrado');
     console.groupEnd();
-    return { authorized: false, profile: null, reason: 'Perfil não encontrado na base de dados.' };
+    return { authorized: false, profile: null, staff: null, reason: 'Perfil não encontrado na base de dados.' };
   }
 
   if (!profile.is_active) {
     console.log('RESULTADO: NEGADO — conta inativa');
     console.groupEnd();
-    return { authorized: false, profile: profile as Profile, reason: 'Conta inativa. Entre em contato com o suporte.' };
+    return { authorized: false, profile: profile as Profile, staff: null, reason: 'Conta inativa. Entre em contato com o suporte.' };
   }
 
-  if (!ADMIN_ROLES.includes(profile.role as UserRole)) {
-    console.log(`RESULTADO: NEGADO — role "${profile.role}" não possui acesso administrativo`);
+  // 2. Busca o registro administrativo (staff)
+  const { data: staff, error: staffError } = await supabase
+    .from('staff')
+    .select('*')
+    .eq('profile_id', user.id)
+    .maybeSingle();
+
+  if (staffError) {
+    console.error('Supabase error fetching staff record:', staffError.message);
+    console.groupEnd();
+    return { authorized: false, profile: profile as Profile, staff: null, reason: `Erro ao buscar permissões: ${staffError.message}` };
+  }
+
+  console.log('Staff Record:', staff);
+
+  if (!staff) {
+    console.log('RESULTADO: NEGADO — usuário não possui registro de staff (não é funcionário/admin)');
     console.groupEnd();
     return {
       authorized: false,
       profile: profile as Profile,
-      reason: `Esta conta não possui permissões administrativas. Role atual: "${profile.role}".`,
+      staff: null,
+      reason: 'Esta conta não possui registro de funcionário vinculado a nenhuma loja.',
+    };
+  }
+
+  if (!ADMIN_ROLES.includes(staff.role as UserRole)) {
+    console.log(`RESULTADO: NEGADO — role "${staff.role}" não possui acesso administrativo`);
+    console.groupEnd();
+    return {
+      authorized: false,
+      profile: profile as Profile,
+      staff: staff as StaffRecord,
+      reason: `Esta conta não possui permissões administrativas. Role atual: "${staff.role}".`,
     };
   }
 
   console.log('RESULTADO: AUTORIZADO');
   console.groupEnd();
-  return { authorized: true, profile: profile as Profile };
+  return { authorized: true, profile: profile as Profile, staff: staff as StaffRecord };
 }
 
 export const authService = {
@@ -106,46 +135,19 @@ export const authService = {
    * ocorre exclusivamente via validateAdminAccess() no AuthContext.
    */
   async signIn(email: string, password: string): Promise<AuthResponse<{ user: User; session: Session }>> {
-    // 1. Verificar status pré-login (lock e inativação)
-    const { data: statusData, error: statusError } = await supabase.rpc('get_user_status_by_email', {
-      user_email: email,
-    });
+    // RPCs de auditoria (get_user_status_by_email, handle_failed_login, handle_successful_login)
+    // foram removidas temporariamente — as funções não existem no banco ainda.
+    // O login depende exclusivamente do Supabase Auth + validateAdminAccess() no AuthContext.
 
-    if (statusError) {
-      console.error('[auth.ts signIn] Erro ao verificar status:', statusError.message);
-    }
-
-    if (!statusError && statusData && statusData.length > 0) {
-      const status = statusData[0];
-
-      if (!status.is_active) {
-        return { data: null, error: 'Sua conta está inativa. Entre em contato com o suporte.' };
-      }
-
-      if (status.locked_until) {
-        const lockTime = new Date(status.locked_until).getTime();
-        const nowTime = Date.now();
-        if (lockTime > nowTime) {
-          const minutesLeft = Math.ceil((lockTime - nowTime) / 60000);
-          return { data: null, error: `Conta temporariamente bloqueada. Tente novamente em ${minutesLeft} minutos.` };
-        }
-      }
-    }
-
-    // 2. Login com Supabase Auth
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      await supabase.rpc('handle_failed_login', { user_email: email });
       return { data: null, error: 'Email ou senha incorretos.' };
     }
 
     if (!data.user || !data.session) {
       return { data: null, error: 'Sessão inválida após login.' };
     }
-
-    // 3. Registrar login bem-sucedido
-    await supabase.rpc('handle_successful_login', { user_id: data.user.id });
 
     return { data: { user: data.user, session: data.session }, error: null };
   },

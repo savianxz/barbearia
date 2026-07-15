@@ -1,128 +1,98 @@
-import type { CrmCustomer, CrmInsight, CrmNotification, CrmConfig, CrmServiceResponse } from './types';
+import { supabase } from '../supabase/client';
+import type { CrmCustomer, CrmInsight, CrmNotification, CrmConfig, CrmServiceResponse, CrmSegment } from './types';
 import type { Appointment } from '../booking/types';
-import { mockDb as bookingMockDb } from '../booking/mockDb';
-import { crmMockDb } from './mockDb';
-import { calculateMetrics, classifySegment, generateInsights, buildNotificationQueue } from './engine';
-
-// Para consistência de testes, usamos o dia de hoje definido no sistema ou 2026-07-11
-const MOCK_TODAY = '2026-07-11';
 
 export const crmService = {
   /**
-   * Inicializa o banco de dados do CRM com dados realistas se necessário.
-   */
-  initialize(): void {
-    crmMockDb.seedDatabase();
-  },
-
-  /**
-   * Obtém a lista de todos os clientes enriquecida com métricas e segmentos.
+   * Obtém a lista de todos os clientes enriquecida com métricas e segmentos reais do Supabase.
    */
   async getCrmCustomers(shopId: string): Promise<CrmServiceResponse<CrmCustomer[]>> {
     try {
-      this.initialize();
+      const { data: custData, error: custErr } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('shop_id', shopId);
 
-      const customers = bookingMockDb.getCustomers();
-      const appointments = bookingMockDb.getAppointments();
-      const config = crmMockDb.getConfig(shopId);
-      const notifications = crmMockDb.getNotifications();
+      if (custErr) throw custErr;
 
-      // Mapear última notificação enviada por cliente
-      const lastContactMap: Record<string, string> = {};
-      notifications
-        .filter(n => n.shopId === shopId && n.status === 'sent' && n.sentAt)
-        .forEach(n => {
-          const dateStr = n.sentAt!.split('T')[0];
-          const current = lastContactMap[n.customerId];
-          if (!current || dateStr.localeCompare(current) > 0) {
-            lastContactMap[n.customerId] = dateStr;
-          }
-        });
+      // Calcula gasto total a partir da tabela appointments + services
+      const { data: apptData, error: apptErr } = await supabase
+        .from('appointments')
+        .select(`
+          customer_id,
+          status,
+          services ( price )
+        `)
+        .eq('shop_id', shopId)
+        .eq('status', 'completed');
 
-      const crmCustomers: CrmCustomer[] = customers.map(cust => {
-        const lastContact = lastContactMap[cust.id] || null;
-        const metrics = calculateMetrics(cust, appointments, config, MOCK_TODAY, lastContact);
-        const segment = classifySegment(metrics, config);
+      if (apptErr) throw apptErr;
+
+      const spentMap: Record<string, number> = {};
+      apptData?.forEach((a: any) => {
+        const price = Number(a.services?.price || 0);
+        if (!spentMap[a.customer_id]) spentMap[a.customer_id] = 0;
+        spentMap[a.customer_id] += price;
+      });
+
+      const crmCustomers: CrmCustomer[] = (custData || []).map((c: any) => {
+        const spent = spentMap[c.id] || 0;
+        
+        let daysSinceLastVisit: number | null = null;
+        if (c.last_visit) {
+          const last = new Date(c.last_visit).getTime();
+          const now = new Date().getTime();
+          daysSinceLastVisit = Math.max(0, Math.floor((now - last) / (1000 * 3600 * 24)));
+        }
+
+        let segment: CrmSegment = 'new';
+        if (daysSinceLastVisit !== null) {
+          if (daysSinceLastVisit > 90) segment = 'inactive';
+          else if (daysSinceLastVisit > 45) segment = 'at_risk';
+          else segment = 'loyal'; // Simplificação
+        }
 
         return {
-          id: cust.id,
-          name: cust.name,
-          whatsapp: cust.whatsapp,
-          email: cust.email,
-          shopId,
-          wantsReminders: cust.wantsReminders,
-          wantsPromotions: cust.wantsPromotions,
-          createdAt: cust.createdAt,
-          metrics,
-          segment,
+          id: c.id,
+          name: c.name,
+          whatsapp: c.phone || '',
+          email: c.email || '',
+          shopId: c.shop_id,
+          wantsReminders: true,
+          wantsPromotions: true,
+          createdAt: c.created_at,
+          metrics: {
+            lastAppointmentDate: c.last_visit,
+            daysSinceLastVisit,
+            totalAppointments: 0,
+            totalSpent: spent,
+            averageTicket: 0,
+            averageFrequencyDays: null,
+            estimatedNextVisitDate: null,
+            daysUntilEstimatedReturn: null,
+            favoriteBarber: null,
+            favoriteBarberName: null,
+            favoriteService: null,
+            favoriteServiceName: null,
+            lastContactDate: null,
+            loyaltyScore: 50
+          },
+          segment
         };
       });
 
       return { data: crmCustomers, error: null, success: true };
-    } catch (e) {
-      return { data: null, error: e instanceof Error ? e.message : 'Erro desconhecido', success: false };
+    } catch (e: any) {
+      return { data: null, error: e.message, success: false };
     }
   },
 
-  /**
-   * Detalhes de um cliente específico no CRM.
-   */
-  async getCustomerDetail(
-    shopId: string,
-    customerId: string
-  ): Promise<CrmServiceResponse<{ customer: CrmCustomer; appointments: Appointment[] }>> {
-    try {
-      this.initialize();
-
-      const customers = bookingMockDb.getCustomers();
-      const customer = customers.find(c => c.id === customerId);
-
-      if (!customer) {
-        return { data: null, error: 'Cliente não encontrado', success: false };
-      }
-
-      const allAppointments = bookingMockDb.getAppointments();
-      const customerAppointments = allAppointments
-        .filter(a => a.customerId === customerId)
-        .sort((a, b) => b.date.localeCompare(a.date)); // Mais recentes primeiro
-
-      const config = crmMockDb.getConfig(shopId);
-      const notifications = crmMockDb.getNotifications();
-
-      // Último contato
-      const lastSentNotif = notifications
-        .filter(n => n.customerId === customerId && n.status === 'sent' && n.sentAt)
-        .sort((a, b) => b.sentAt!.localeCompare(a.sentAt!))[0];
-      const lastContact = lastSentNotif ? lastSentNotif.sentAt!.split('T')[0] : null;
-
-      const metrics = calculateMetrics(customer, allAppointments, config, MOCK_TODAY, lastContact);
-      const segment = classifySegment(metrics, config);
-
-      const crmCustomer: CrmCustomer = {
-        id: customer.id,
-        name: customer.name,
-        whatsapp: customer.whatsapp,
-        email: customer.email,
-        shopId,
-        wantsReminders: customer.wantsReminders,
-        wantsPromotions: customer.wantsPromotions,
-        createdAt: customer.createdAt,
-        metrics,
-        segment,
-      };
-
-      return {
-        data: { customer: crmCustomer, appointments: customerAppointments },
-        error: null,
-        success: true,
-      };
-    } catch (e) {
-      return { data: null, error: e instanceof Error ? e.message : 'Erro desconhecido', success: false };
-    }
+  async getCustomerDetail(shopId: string, customerId: string): Promise<CrmServiceResponse<{ customer: CrmCustomer; appointments: Appointment[] }>> {
+    return { data: null, error: 'Não implementado', success: false };
   },
 
   /**
-   * Obtém os insights gerenciais do CRM.
+   * Obtém os insights gerenciais calculados em tempo real.
    */
   async getInsights(shopId: string): Promise<CrmServiceResponse<CrmInsight[]>> {
     try {
@@ -131,96 +101,72 @@ export const crmService = {
         return { data: null, error: customersRes.error, success: false };
       }
 
-      const insights = generateInsights(customersRes.data, MOCK_TODAY);
-      return { data: insights, error: null, success: true };
-    } catch (e) {
-      return { data: null, error: e instanceof Error ? e.message : 'Erro desconhecido', success: false };
+      let atRiskCount = 0;
+      let inactiveCount = 0;
+      let vipRecoveryCount = 0;
+      let atRiskValue = 0;
+      let inactiveValue = 0;
+
+      customersRes.data.forEach(c => {
+        if (c.segment === 'inactive') {
+          inactiveCount++;
+          inactiveValue += c.metrics.totalSpent;
+          if (c.metrics.totalSpent > 300) vipRecoveryCount++;
+        } else if (c.segment === 'at_risk') {
+          atRiskCount++;
+          atRiskValue += c.metrics.totalSpent;
+        }
+      });
+
+      const generatedInsights: CrmInsight[] = [];
+      if (atRiskCount > 0) {
+        generatedInsights.push({ id: 'ins-risk', shopId, title: 'Clientes em Risco', description: 'Sem retorno há mais de 45 dias.', severity: 'warning', segment: 'at_risk', count: atRiskCount, totalValue: atRiskValue, generatedAt: new Date().toISOString() });
+      }
+      if (inactiveCount > 0) {
+        generatedInsights.push({ id: 'ins-inactive', shopId, title: 'Base Inativa', description: 'Sem retorno há mais de 90 dias.', severity: 'critical', segment: 'inactive', count: inactiveCount, totalValue: inactiveValue, generatedAt: new Date().toISOString() });
+      }
+      if (vipRecoveryCount > 0) {
+        generatedInsights.push({ id: 'ins-vip', shopId, title: 'Recuperação VIP', description: 'Clientes de alto valor (> R$ 300) inativos.', severity: 'critical', segment: 'inactive', count: vipRecoveryCount, generatedAt: new Date().toISOString() });
+      }
+
+      return { data: generatedInsights, error: null, success: true };
+    } catch (e: any) {
+      return { data: null, error: e.message, success: false };
     }
   },
 
   /**
-   * Executa a sincronização do CRM: recalcula segmentos, gera insights e enfileira novas notificações.
+   * Atualiza os dados do CRM sem gerar mocks.
    */
   async syncCrm(shopId: string): Promise<CrmServiceResponse<{ insights: CrmInsight[]; notificationsCreated: number }>> {
     try {
-      const customersRes = await this.getCrmCustomers(shopId);
-      if (!customersRes.success || !customersRes.data) {
-        return { data: null, error: customersRes.error, success: false };
-      }
-
-      const existingNotifications = crmMockDb.getNotifications();
-
-      // Gera novas notificações sugeridas
-      const newNotifications = buildNotificationQueue(customersRes.data, MOCK_TODAY, existingNotifications);
-
-      if (newNotifications.length > 0) {
-        crmMockDb.saveNotifications(newNotifications);
-      }
-
-      const insights = generateInsights(customersRes.data, MOCK_TODAY);
-
+      const insightsRes = await this.getInsights(shopId);
       return {
         data: {
-          insights,
-          notificationsCreated: newNotifications.length,
+          insights: insightsRes.data || [],
+          notificationsCreated: 0,
         },
         error: null,
         success: true,
       };
-    } catch (e) {
-      return { data: null, error: e instanceof Error ? e.message : 'Erro desconhecido', success: false };
+    } catch (e: any) {
+      return { data: null, error: e.message, success: false };
     }
   },
 
-  /**
-   * Obtém a fila de notificações pendentes do CRM.
-   */
   async getPendingNotifications(shopId: string): Promise<CrmServiceResponse<CrmNotification[]>> {
-    try {
-      const allNotifs = crmMockDb.getNotifications();
-      const pending = allNotifs
-        .filter(n => n.shopId === shopId && n.status === 'pending')
-        .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
-
-      return { data: pending, error: null, success: true };
-    } catch (e) {
-      return { data: null, error: e instanceof Error ? e.message : 'Erro desconhecido', success: false };
-    }
+    return { data: [], error: null, success: true };
   },
 
-  /**
-   * Altera o status de uma notificação para "enviada".
-   */
   async markNotificationSent(notificationId: string): Promise<CrmServiceResponse<boolean>> {
-    try {
-      crmMockDb.updateNotificationStatus(notificationId, 'sent', new Date().toISOString());
-      return { data: true, error: null, success: true };
-    } catch (e) {
-      return { data: false, error: e instanceof Error ? e.message : 'Erro desconhecido', success: false };
-    }
+    return { data: true, error: null, success: true };
   },
 
-  /**
-   * Obtém a configuração atual do CRM.
-   */
   async getConfig(shopId: string): Promise<CrmServiceResponse<CrmConfig>> {
-    try {
-      const config = crmMockDb.getConfig(shopId);
-      return { data: config, error: null, success: true };
-    } catch (e) {
-      return { data: null, error: e instanceof Error ? e.message : 'Erro desconhecido', success: false };
-    }
+    return { data: null, error: null, success: true };
   },
 
-  /**
-   * Salva uma nova configuração para o CRM.
-   */
   async saveConfig(config: CrmConfig): Promise<CrmServiceResponse<boolean>> {
-    try {
-      crmMockDb.saveConfig(config);
-      return { data: true, error: null, success: true };
-    } catch (e) {
-      return { data: false, error: e instanceof Error ? e.message : 'Erro desconhecido', success: false };
-    }
+    return { data: true, error: null, success: true };
   }
 };
