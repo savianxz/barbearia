@@ -51,6 +51,7 @@ interface BookingModalProps {
   services: Service[];
   shopName: string;
   shopId: string;
+  businessHours?: Record<string, { isOpen: boolean; openTime: string; closeTime: string }>;
 }
 
 // ── STEPPER CONFIG ───────────────────────────────────────────────────────────
@@ -93,6 +94,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   services,
   shopName,
   shopId,
+  businessHours,
 }) => {
   // ── Body scroll lock ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -492,9 +494,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     {calendarCells.map((dayDate, idx) => {
                       if (!dayDate) return <div key={`e-${idx}`} />;
                       const today = new Date(); today.setHours(0, 0, 0, 0);
-                      const isSunday = dayDate.getDay() === 0;
+                      const dow = dayDate.getDay();
                       const isPast = dayDate < today;
-                      const isDisabled = isPast || isSunday;
+                      const hasHoursConfig = businessHours && Object.keys(businessHours).length > 0;
+                      const isClosed = hasHoursConfig
+                        ? businessHours[dow.toString()]?.isOpen === false
+                        : dow === 0; // Fallback: bloqueia domingo se sem configuração
+                      const isDisabled = isPast || isClosed;
                       const dateStr = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`;
                       const isSelected = date === dateStr;
                       return (

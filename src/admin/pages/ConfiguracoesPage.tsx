@@ -4,6 +4,11 @@ import { Save, Plus, CheckCircle, AlertCircle, Clock, Users, Scissors, CalendarC
 import { useAuth } from '../../contexts/AuthContext';
 import { settingsService } from '../../services/settings';
 import type { ShopSettings, Barber, Service } from '../../types/settings';
+import { Modal, Toast } from '../components/AdminDialogs';
+import { BarberForm } from '../components/BarberForm';
+import { ServiceForm } from '../components/ServiceForm';
+import { useCreateBarber } from '../../hooks/useBarbers';
+import { useCreateService } from '../../hooks/useServices';
 
 const weekdaysName = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
 
@@ -33,6 +38,12 @@ export const ConfiguracoesPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  const [isBarberModalOpen, setIsBarberModalOpen] = useState(false);
+  const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+
+  const createBarberMutation = useCreateBarber(shopId || '');
+  const createServiceMutation = useCreateService(shopId || '');
 
   const showSuccess = (msg: string) => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(''), 3000); };
   const showError   = (msg: string) => { setErrorMsg(msg);   setTimeout(() => setErrorMsg(''), 4000); };
@@ -316,7 +327,7 @@ export const ConfiguracoesPage: React.FC = () => {
                   <h2 className="text-lg font-bold text-white">Sua Equipe</h2>
                   <p className="text-[12px] text-white/40 mt-1">Gerencie os profissionais da barbearia.</p>
                 </div>
-                <button className="flex items-center gap-1.5 px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-[11px] font-bold tracking-widest uppercase rounded-lg border border-white/10 transition-colors cursor-pointer">
+                <button onClick={() => setIsBarberModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-[11px] font-bold tracking-widest uppercase rounded-lg border border-white/10 transition-colors cursor-pointer">
                   <Plus className="w-3.5 h-3.5" /> Adicionar
                 </button>
               </div>
@@ -327,12 +338,16 @@ export const ConfiguracoesPage: React.FC = () => {
                 ) : barbers.map(barber => (
                   <div key={barber.id} className="flex items-center justify-between p-4 rounded-xl border border-white/6 bg-white/[0.02]">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] font-bold">
-                        {barber.name[0].toUpperCase()}
+                      <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] font-bold overflow-hidden">
+                        {barber.avatar_url ? (
+                          <img src={barber.avatar_url} alt={barber.name} className="w-full h-full object-cover" />
+                        ) : (
+                          barber.name[0].toUpperCase()
+                        )}
                       </div>
                       <div>
                         <p className="text-[13px] font-bold text-white">{barber.name}</p>
-                        <p className="text-[11px] text-white/40">{barber.role}</p>
+                        <p className="text-[11px] text-white/40">{barber.email || 'Sem email'}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -358,7 +373,7 @@ export const ConfiguracoesPage: React.FC = () => {
                   <h2 className="text-lg font-bold text-white">Catálogo de Serviços</h2>
                   <p className="text-[12px] text-white/40 mt-1">Configure os serviços, preços e durações.</p>
                 </div>
-                <button className="flex items-center gap-1.5 px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-[11px] font-bold tracking-widest uppercase rounded-lg border border-white/10 transition-colors cursor-pointer">
+                <button onClick={() => setIsServiceModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-[11px] font-bold tracking-widest uppercase rounded-lg border border-white/10 transition-colors cursor-pointer">
                   <Plus className="w-3.5 h-3.5" /> Adicionar
                 </button>
               </div>
@@ -370,11 +385,10 @@ export const ConfiguracoesPage: React.FC = () => {
                   <div key={srv.id} className="flex items-center justify-between p-4 rounded-xl border border-white/6 bg-white/[0.02]">
                     <div>
                       <p className="text-[13px] font-bold text-white">{srv.name}</p>
-                      <p className="text-[11px] text-white/40 capitalize">{srv.category}</p>
+                      <p className="text-[11px] text-white/40 capitalize">{srv.duration_minutes} min</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[13px] font-bold text-[#D4AF37]">R$ {srv.price.toFixed(2)}</p>
-                      <p className="text-[11px] text-white/40">{srv.duration} minutos</p>
+                      <p className="text-[13px] font-bold text-[#D4AF37]">R$ {Number(srv.price).toFixed(2)}</p>
                     </div>
                   </div>
                 ))}
@@ -458,6 +472,42 @@ export const ConfiguracoesPage: React.FC = () => {
           )}
         </motion.div>
       </div>
+
+      <Modal isOpen={isBarberModalOpen} onClose={() => setIsBarberModalOpen(false)} title="Adicionar Profissional">
+        <BarberForm 
+          initial={{}} 
+          shopId={shopId || ''} 
+          loading={createBarberMutation.isPending}
+          onSave={async (data) => {
+            try {
+              await createBarberMutation.mutateAsync(data as any);
+              showSuccess('Profissional adicionado!');
+              setIsBarberModalOpen(false);
+              loadData(); // refresh list
+            } catch (e: any) {
+              showError(e.message || 'Erro ao salvar.');
+            }
+          }}
+        />
+      </Modal>
+
+      <Modal isOpen={isServiceModalOpen} onClose={() => setIsServiceModalOpen(false)} title="Adicionar Serviço">
+        <ServiceForm 
+          initial={{}} 
+          shopId={shopId || ''} 
+          loading={createServiceMutation.isPending}
+          onSave={async (data) => {
+            try {
+              await createServiceMutation.mutateAsync(data as any);
+              showSuccess('Serviço adicionado!');
+              setIsServiceModalOpen(false);
+              loadData(); // refresh list
+            } catch (e: any) {
+              showError(e.message || 'Erro ao salvar.');
+            }
+          }}
+        />
+      </Modal>
     </div>
   );
 };

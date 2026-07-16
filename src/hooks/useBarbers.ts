@@ -4,7 +4,7 @@
  * All data fetching, mutations and cache invalidation live here.
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { barbersApi } from '../services/scheduling';
+import { barbersApi, publicApi } from '../services/scheduling';
 import type { CreateBarberInput, UpdateBarberInput } from '../types/scheduling';
 
 export const BARBERS_KEY = (shopId: string) => ['barbers', shopId] as const;
@@ -14,6 +14,18 @@ export function useBarbers(shopId: string) {
     queryKey: BARBERS_KEY(shopId),
     queryFn: async () => {
       const { data, error } = await barbersApi.list(shopId);
+      if (error) throw new Error(error);
+      return data ?? [];
+    },
+    enabled: !!shopId,
+  });
+}
+
+export function usePublicBarbers(shopId: string) {
+  return useQuery({
+    queryKey: ['publicBarbers', shopId],
+    queryFn: async () => {
+      const { data, error } = await publicApi.listBarbers(shopId);
       if (error) throw new Error(error);
       return data ?? [];
     },

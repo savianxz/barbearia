@@ -19,6 +19,37 @@ export const availabilityService = {
   },
 
   /**
+   * Resolve "Primeiro Disponível": retorna o UUID do primeiro barbeiro ativo da
+   * loja que estiver livre no intervalo dado, ou null se nenhum estiver livre.
+   */
+  async findFirstAvailableBarber(shopId: string, startIso: string, endIso: string): Promise<string | null> {
+    // 1. Busca todos os barbeiros ativos da loja, em ordem de criação (determinístico)
+    const { data: barbers, error: barbersError } = await supabase
+      .from('barbers')
+      .select('id')
+      .eq('shop_id', shopId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: true });
+
+    if (barbersError || !barbers || barbers.length === 0) return null;
+
+    // 2. Busca os barbeiros que JÁ têm agendamento conflitante no intervalo escolhido
+    const { data: busyAppointments } = await supabase
+      .from('appointments')
+      .select('barber_id')
+      .eq('shop_id', shopId)
+      .neq('status', 'canceled')
+      .lt('start_time', endIso)
+      .gt('end_time', startIso);
+
+    const busyBarberIds = new Set((busyAppointments || []).map(a => a.barber_id));
+
+    // 3. Retorna o primeiro barbeiro que NÃO está ocupado
+    const freeBarber = barbers.find(b => !busyBarberIds.has(b.id));
+    return freeBarber?.id ?? null;
+  },
+
+  /**
    * Puxa horários disponíveis para uma data
    */
   async getAvailableSlots(shopId: string, barberId: string, durationMinutes: number, dateStr: string): Promise<string[]> {

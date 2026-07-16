@@ -143,11 +143,23 @@ export const useBooking = (shopId?: string) => {
     const end = new Date(new Date(`${booking.date}T00:00:00`).setHours(h, m + booking.service.duration_minutes));
     const endIso = end.toISOString();
 
+    // Resolve "Primeiro Disponível" para um barbeiro real antes de salvar
+    let actualBarberId = barberId;
+    if (barberId === 'first-available') {
+      const resolvedId = await availabilityService.findFirstAvailableBarber(shopId, startIso, endIso);
+      if (!resolvedId) {
+        setSubmitError('Nenhum profissional está disponível neste horário. Por favor, escolha outro horário ou um profissional específico.');
+        setIsSubmitting(false);
+        return false;
+      }
+      actualBarberId = resolvedId;
+    }
+
     const res = await appointmentService.createAppointment({
       shop_id: shopId,
       customer_name: customerDetails.name,
       customer_phone: customerDetails.whatsapp,
-      barber_id: barberId,
+      barber_id: actualBarberId,
       service_id: booking.service.id,
       start_time: startIso,
       end_time: endIso,

@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../services/supabase/client';
+import { publicApi } from '../services/scheduling';
 
-export function useCurrentShop() {
+export function useCurrentShop(slug?: string) {
   return useQuery({
-    queryKey: ['currentShop'],
+    queryKey: ['currentShop', slug],
     queryFn: async () => {
-      const { data, error } = await supabase.from('shops').select('*').limit(1).single();
-      if (error) throw new Error(error.message);
+      const { data, error } = await publicApi.getShop(undefined, slug);
+      if (error) throw new Error(error);
       return data;
     },
     staleTime: 1000 * 60 * 60, // 1 hour

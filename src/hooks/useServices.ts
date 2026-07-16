@@ -3,7 +3,7 @@
  * React Query hooks for the services resource.
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { servicesApi } from '../services/scheduling';
+import { servicesApi, publicApi } from '../services/scheduling';
 import type { CreateServiceInput, UpdateServiceInput } from '../types/scheduling';
 
 export const SERVICES_KEY = (shopId: string) => ['services', shopId] as const;
@@ -13,6 +13,18 @@ export function useServices(shopId: string) {
     queryKey: SERVICES_KEY(shopId),
     queryFn: async () => {
       const { data, error } = await servicesApi.list(shopId);
+      if (error) throw new Error(error);
+      return data ?? [];
+    },
+    enabled: !!shopId,
+  });
+}
+
+export function usePublicServices(shopId: string) {
+  return useQuery({
+    queryKey: ['publicServices', shopId],
+    queryFn: async () => {
+      const { data, error } = await publicApi.listServices(shopId);
       if (error) throw new Error(error);
       return data ?? [];
     },

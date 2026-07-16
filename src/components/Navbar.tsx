@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, Calendar, MessageCircle } from 'lucide-react';
-import { shop } from '../data/mockData';
 
 interface NavbarProps {
+  shop: any;
   onOpenBooking: () => void;
   onOpenAdmin: () => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenBooking, onOpenAdmin }) => {
+export const Navbar: React.FC<NavbarProps> = ({ shop, onOpenBooking, onOpenAdmin }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -41,6 +41,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenBooking, onOpenAdmin }) =>
     }, 300);
   };
 
+  const shopName = shop?.name || 'Barbearia';
+  const logoText = shop?.name || 'LOGO';
+  const logoImg = shop?.logo_url || '/images/logo.jpg';
+  const whatsappLink = shop?.phone 
+    ? `https://wa.me/${shop.phone.replace(/\D/g, '')}?text=Ol%C3%A1%21+Gostaria+de+agendar+um+hor%C3%A1rio.`
+    : '#';
+
   return (
     <>
       <motion.nav
@@ -57,16 +64,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenBooking, onOpenAdmin }) =>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[60px] md:h-20 flex items-center justify-between">
           
           {/* Logo */}
-          <a href="#" className="flex items-center gap-2.5 group" aria-label={`${shop.name} — Início`}>
+          <a href="#" className="flex items-center gap-2.5 group" aria-label={`${shopName} — Início`}>
             <div className="w-9 h-9 md:w-11 md:h-11 border border-border-premium bg-black/60 flex items-center justify-center overflow-hidden group-hover:border-gold/50 transition-colors duration-300 flex-shrink-0">
               <img
-                src="/images/logo.jpg"
-                alt={`${shop.name} Logo`}
+                src={logoImg}
+                alt={`${shopName} Logo`}
                 className="w-7 h-7 md:w-9 md:h-9 object-contain"
               />
             </div>
             <span className="font-display text-base md:text-lg tracking-widest text-white group-hover:text-gold transition-colors duration-300">
-              {shop.logo}
+              {logoText}
             </span>
           </a>
 
@@ -152,9 +159,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenBooking, onOpenAdmin }) =>
               <div className="flex items-center justify-between h-[60px]">
                 <a href="#" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-2.5">
                   <div className="w-9 h-9 border border-border-premium bg-black/60 flex items-center justify-center overflow-hidden">
-                    <img src="/images/logo.jpg" alt={`${shop.name} Logo`} className="w-7 h-7 object-contain" />
+                    <img src={logoImg} alt={`${shopName} Logo`} className="w-7 h-7 object-contain" />
                   </div>
-                  <span className="font-display text-base tracking-widest text-white">{shop.logo}</span>
+                  <span className="font-display text-base tracking-widest text-white">{logoText}</span>
                 </a>
 
                 <button
@@ -207,7 +214,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenBooking, onOpenAdmin }) =>
                 </button>
                 {/* WhatsApp */}
                 <a
-                  href={shop.whatsappLink}
+                  href={whatsappLink}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setMobileMenuOpen(false)}
