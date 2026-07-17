@@ -85,14 +85,14 @@ export const DashboardPage: React.FC = () => {
     if (custErr) { setError(custErr.message); setLoading(false); return; }
 
     // 2. Clientes inativos (sem visita há 30+ dias — last_visit < 30 dias atrás)
-    const { count: inactiveCustomers, error: inactErr } = await supabase
+    const { count: inactiveCustomers, error: _inactErr } = await supabase
       .from('customers')
       .select('*', { count: 'exact', head: true })
       .eq('shop_id', shopId)
       .lt('last_visit', thirtyDaysAgo.toISOString().split('T')[0]);
 
     // 3. Clientes em risco (sem visita há 60+ dias)
-    const { count: atRiskCustomers, error: riskErr } = await supabase
+    const { count: atRiskCustomers, error: _riskErr } = await supabase
       .from('customers')
       .select('*', { count: 'exact', head: true })
       .eq('shop_id', shopId)

@@ -4,7 +4,6 @@ import { DollarSign, TrendingUp, Scissors, Users } from 'lucide-react';
 import { StatCard } from '../components/ui/StatCard';
 import { useAppointments } from '../../hooks/useAppointments';
 import { useAuth } from '../../contexts/AuthContext';
-import type { AppointmentWithDetails } from '../../types/scheduling';
 
 const fmt = (n: number) => `R$ ${n.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
 

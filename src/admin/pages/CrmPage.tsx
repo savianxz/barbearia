@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Brain, MessageCircle, RefreshCw, AlertTriangle, TrendingDown, Zap, Users } from 'lucide-react';
+import { MessageCircle, RefreshCw, AlertTriangle, TrendingDown, Zap, Users } from 'lucide-react';
 import { SegmentBadge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { supabase } from '../../services/supabase/client';

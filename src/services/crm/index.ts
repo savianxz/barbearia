@@ -87,7 +87,7 @@ export const crmService = {
     }
   },
 
-  async getCustomerDetail(shopId: string, customerId: string): Promise<CrmServiceResponse<{ customer: CrmCustomer; appointments: Appointment[] }>> {
+  async getCustomerDetail(_shopId: string, _customerId: string): Promise<CrmServiceResponse<{ customer: CrmCustomer; appointments: Appointment[] }>> {
     return { data: null, error: 'Não implementado', success: false };
   },
 
@@ -154,19 +154,19 @@ export const crmService = {
     }
   },
 
-  async getPendingNotifications(shopId: string): Promise<CrmServiceResponse<CrmNotification[]>> {
+  async getPendingNotifications(_shopId: string): Promise<CrmServiceResponse<CrmNotification[]>> {
     return { data: [], error: null, success: true };
   },
 
-  async markNotificationSent(notificationId: string): Promise<CrmServiceResponse<boolean>> {
+  async markNotificationSent(_notificationId: string): Promise<CrmServiceResponse<boolean>> {
     return { data: true, error: null, success: true };
   },
 
-  async getConfig(shopId: string): Promise<CrmServiceResponse<CrmConfig>> {
+  async getConfig(_shopId: string): Promise<CrmServiceResponse<CrmConfig>> {
     return { data: null, error: null, success: true };
   },
 
-  async saveConfig(config: CrmConfig): Promise<CrmServiceResponse<boolean>> {
+  async saveConfig(_config: CrmConfig): Promise<CrmServiceResponse<boolean>> {
     return { data: true, error: null, success: true };
   }
 };

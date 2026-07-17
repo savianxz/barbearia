@@ -4,7 +4,7 @@ import { Save, Plus, CheckCircle, AlertCircle, Clock, Users, Scissors, CalendarC
 import { useAuth } from '../../contexts/AuthContext';
 import { settingsService } from '../../services/settings';
 import type { ShopSettings, Barber, Service } from '../../types/settings';
-import { Modal, Toast } from '../components/AdminDialogs';
+import { Modal } from '../components/AdminDialogs';
 import { BarberForm } from '../components/BarberForm';
 import { ServiceForm } from '../components/ServiceForm';
 import { useCreateBarber } from '../../hooks/useBarbers';
@@ -339,15 +339,15 @@ export const ConfiguracoesPage: React.FC = () => {
                   <div key={barber.id} className="flex items-center justify-between p-4 rounded-xl border border-white/6 bg-white/[0.02]">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 flex items-center justify-center text-[#D4AF37] font-bold overflow-hidden">
-                        {barber.avatar_url ? (
-                          <img src={barber.avatar_url} alt={barber.name} className="w-full h-full object-cover" />
+                        {barber.image_url ? (
+                          <img src={barber.image_url} alt={barber.name} className="w-full h-full object-cover" />
                         ) : (
                           barber.name[0].toUpperCase()
                         )}
                       </div>
                       <div>
                         <p className="text-[13px] font-bold text-white">{barber.name}</p>
-                        <p className="text-[11px] text-white/40">{barber.email || 'Sem email'}</p>
+                        <p className="text-[11px] text-white/40">{barber.role || 'Barbeiro'}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -385,7 +385,7 @@ export const ConfiguracoesPage: React.FC = () => {
                   <div key={srv.id} className="flex items-center justify-between p-4 rounded-xl border border-white/6 bg-white/[0.02]">
                     <div>
                       <p className="text-[13px] font-bold text-white">{srv.name}</p>
-                      <p className="text-[11px] text-white/40 capitalize">{srv.duration_minutes} min</p>
+                      <p className="text-[11px] text-white/40 capitalize">{srv.duration} min</p>
                     </div>
                     <div className="text-right">
                       <p className="text-[13px] font-bold text-[#D4AF37]">R$ {Number(srv.price).toFixed(2)}</p>

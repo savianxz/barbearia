@@ -1,5 +1,5 @@
 import { supabase } from '../supabase/client';
-import type { UserRole, Profile } from '../../types/auth';
+import type { UserRole, Profile, StaffRecord } from '../../types/auth';
 import type { User, Session } from '@supabase/supabase-js';
 
 export interface SignUpParams {

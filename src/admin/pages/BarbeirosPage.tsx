@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Pencil, Trash2, Power, PowerOff, User, RefreshCw, Upload } from 'lucide-react';
+import { Plus, Pencil, Trash2, Power, PowerOff, User, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../services/supabase/client';
 import {
   useBarbers,
   useCreateBarber,
