@@ -44,14 +44,10 @@ export interface Barber {
   shop_id: string;
   profile_id: string | null;
   name: string;
-  role: string;
-  experience: string | null;
-  rating: number;
-  reviews_count: number;
-  image_url: string | null;
-  bio: string | null;
-  specialties: string[];
-  is_founder: boolean;
+  phone: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  color: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -60,10 +56,8 @@ export interface Service {
   id: string;
   shop_id: string;
   name: string;
-  category: 'cabelo' | 'barba' | 'tratamentos' | string;
-  description: string | null;
   price: number;
-  duration: number;
+  duration_minutes: number;
   is_active: boolean;
   created_at: string;
 }
