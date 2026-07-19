@@ -61,6 +61,7 @@ export const AgendaPage: React.FC = () => {
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
   const [finalizeTarget, setFinalizeTarget] = useState<AppointmentWithDetails | null>(null);
   const [finalPriceStr, setFinalPriceStr] = useState<string>('');
+  const [priceWarning, setPriceWarning] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
 
   const filteredAppointments = allAppointments.filter(a => {
@@ -81,16 +82,40 @@ export const AgendaPage: React.FC = () => {
   const handleFinalize = async () => {
     if (!finalizeTarget) return;
     try {
-      const price = parseFloat(finalPriceStr.replace(',', '.'));
-      const finalPrice = isNaN(price) ? finalizeTarget.total_price : price;
+      let price = parseFloat(finalPriceStr.replace(',', '.'));
+      if (isNaN(price)) price = finalizeTarget.total_price;
       
-      await finalizeMut.mutateAsync({ id: finalizeTarget.id, finalPrice });
+      if (price < 0.01) {
+        showToast('O valor mínimo deve ser R$ 0,01', 'error');
+        return;
+      }
+      
+      await finalizeMut.mutateAsync({ id: finalizeTarget.id, finalPrice: price });
       showToast('Atendimento finalizado!');
       if (drawerAppt?.id === finalizeTarget.id) {
-        setDrawerAppt(prev => prev ? { ...prev, status: 'completed', total_price: finalPrice } : null);
+        setDrawerAppt(prev => prev ? { ...prev, status: 'completed', total_price: price } : null);
       }
     } catch (e: any) { showToast(e.message ?? 'Erro ao finalizar', 'error'); }
     setFinalizeTarget(null);
+  };
+  
+  const handlePriceChange = (val: string) => {
+    setFinalPriceStr(val);
+    if (!finalizeTarget) return;
+    
+    const price = parseFloat(val.replace(',', '.'));
+    if (!isNaN(price) && finalizeTarget.total_price > 0) {
+      const discount = 1 - (price / finalizeTarget.total_price);
+      if (discount > 0.5) {
+        setPriceWarning('Aviso: O valor está com mais de 50% de desconto.');
+      } else if (price > finalizeTarget.total_price * 2) {
+        setPriceWarning('Aviso: O valor é mais que o dobro do original.');
+      } else {
+        setPriceWarning(null);
+      }
+    } else {
+      setPriceWarning(null);
+    }
   };
 
   const handleConfirmStatus = async () => {
@@ -340,7 +365,7 @@ export const AgendaPage: React.FC = () => {
                     <CheckCircle className="w-5 h-5" /> Finalizar Atendimento
                   </button>
                   <button onClick={() => setCancelTarget(drawerAppt.id)} className="w-full py-3.5 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 font-bold text-[13px] tracking-widest uppercase transition-all cursor-pointer">
-                    Cancelar Agendamento
+                    Cancelar / Não Compareceu
                   </button>
                 </div>
               )}
@@ -369,11 +394,13 @@ export const AgendaPage: React.FC = () => {
                   <input
                     type="number"
                     step="0.01"
+                    min="0.01"
                     value={finalPriceStr}
-                    onChange={(e) => setFinalPriceStr(e.target.value)}
+                    onChange={(e) => handlePriceChange(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white font-bold text-lg focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
                   />
                 </div>
+                {priceWarning && <p className="text-amber-400 text-[11px] mt-2 font-semibold">{priceWarning}</p>}
               </div>
 
               <div className="flex gap-3">

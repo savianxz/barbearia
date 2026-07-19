@@ -119,18 +119,35 @@ export const appointmentService = {
 
   async finalizeAppointment(id: string, finalPrice?: number): Promise<{ error: string | null }> {
     try {
-      const { data: appt, error: getErr } = await supabase.from('appointments').select('status').eq('id', id).single();
+      const { data: appt, error: getErr } = await supabase.from('appointments').select('status, customer_id, total_price').eq('id', id).single();
       if (getErr) throw getErr;
       if (appt.status === 'completed') throw new Error('Agendamento já foi finalizado.');
       if (appt.status === 'canceled') throw new Error('Não é possível finalizar um agendamento cancelado.');
 
       const updateData: any = { status: 'completed' };
+      const priceToCharge = finalPrice !== undefined ? finalPrice : appt.total_price;
+      
       if (finalPrice !== undefined) {
         updateData.total_price = finalPrice;
       }
 
       const { error: updErr } = await supabase.from('appointments').update(updateData).eq('id', id);
       if (updErr) throw updErr;
+
+      // Updating customer metrics manually since there is no DB trigger doing this
+      const { data: customer, error: cErr } = await supabase.from('customers').select('total_visits, total_spent').eq('id', appt.customer_id).single();
+      if (cErr) throw cErr;
+
+      const newVisits = (customer.total_visits || 0) + 1;
+      const newSpent = Number(customer.total_spent || 0) + Number(priceToCharge);
+
+      const { error: cUpdErr } = await supabase.from('customers').update({ 
+        total_visits: newVisits, 
+        total_spent: newSpent, 
+        last_visit: new Date().toISOString() 
+      }).eq('id', appt.customer_id);
+      
+      if (cUpdErr) throw cUpdErr;
 
       return { error: null };
     } catch (e: any) {
