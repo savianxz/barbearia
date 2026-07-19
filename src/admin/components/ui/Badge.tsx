@@ -5,13 +5,12 @@ import type { AppointmentStatus } from '../../../types/scheduling';
 // ── Segment Badge ──────────────────────────────────────────────────────────────
 
 const segmentConfig: Record<CrmSegment, { label: string; color: string }> = {
-  vip:            { label: 'VIP',           color: 'bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30' },
   loyal:          { label: 'Fiel',          color: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' },
-  club_eligible:  { label: 'Clube',         color: 'bg-blue-500/15 text-blue-400 border border-blue-500/30' },
   at_risk:        { label: 'Em Risco',      color: 'bg-orange-500/15 text-orange-400 border border-orange-500/30' },
   inactive:       { label: 'Inativo',       color: 'bg-red-500/15 text-red-400 border border-red-500/30' },
   never_returned: { label: 'Sem Retorno',   color: 'bg-neutral-700/40 text-neutral-400 border border-neutral-600/30' },
   new:            { label: 'Novo',          color: 'bg-violet-500/15 text-violet-400 border border-violet-500/30' },
+  regular:        { label: 'Regular',       color: 'bg-slate-500/15 text-slate-400 border border-slate-500/30' },
 };
 
 const statusConfig: Record<AppointmentStatus, { label: string; color: string; dot: string }> = {

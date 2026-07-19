@@ -16,8 +16,8 @@ export const ClubePage: React.FC = () => {
   useEffect(() => {
     crmService.getCrmCustomers('f-street').then(r => {
       const all = r.data ?? [];
-      setEligible(all.filter(c => c.segment === 'club_eligible'));
-      setMembers(all.filter(c => c.segment === 'vip' || c.segment === 'loyal'));
+      setEligible(all.filter(c => !c.isClubMember && c.segment === 'loyal'));
+      setMembers(all.filter(c => c.isClubMember));
       setLoading(false);
     });
   }, []);

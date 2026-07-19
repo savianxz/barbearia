@@ -1,5 +1,5 @@
 import { supabase } from '../supabase/client';
-import type { CrmCustomer, CrmInsight, CrmNotification, CrmConfig, CrmServiceResponse, CrmSegment } from './types';
+import type { CrmCustomer, CrmInsight, CrmNotification, CrmConfig, CrmServiceResponse } from './types';
 import type { Appointment } from '../booking/types';
 
 export const crmService = {
@@ -8,78 +8,39 @@ export const crmService = {
    */
   async getCrmCustomers(shopId: string): Promise<CrmServiceResponse<CrmCustomer[]>> {
     try {
-      const { data: custData, error: custErr } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('shop_id', shopId);
+      const { data, error } = await supabase
+        .rpc('get_crm_customers', { p_shop_id: shopId });
 
-      if (custErr) throw custErr;
+      if (error) throw error;
 
-      // Calcula gasto total a partir da tabela appointments + services
-      const { data: apptData, error: apptErr } = await supabase
-        .from('appointments')
-        .select(`
-          customer_id,
-          status,
-          services ( price )
-        `)
-        .eq('shop_id', shopId)
-        .eq('status', 'completed');
-
-      if (apptErr) throw apptErr;
-
-      const spentMap: Record<string, number> = {};
-      apptData?.forEach((a: any) => {
-        const price = Number(a.services?.price || 0);
-        if (!spentMap[a.customer_id]) spentMap[a.customer_id] = 0;
-        spentMap[a.customer_id] += price;
-      });
-
-      const crmCustomers: CrmCustomer[] = (custData || []).map((c: any) => {
-        const spent = spentMap[c.id] || 0;
-        
-        let daysSinceLastVisit: number | null = null;
-        if (c.last_visit) {
-          const last = new Date(c.last_visit).getTime();
-          const now = new Date().getTime();
-          daysSinceLastVisit = Math.max(0, Math.floor((now - last) / (1000 * 3600 * 24)));
-        }
-
-        let segment: CrmSegment = 'new';
-        if (daysSinceLastVisit !== null) {
-          if (daysSinceLastVisit > 90) segment = 'inactive';
-          else if (daysSinceLastVisit > 45) segment = 'at_risk';
-          else segment = 'loyal'; // Simplificação
-        }
-
-        return {
-          id: c.id,
-          name: c.name,
-          whatsapp: c.phone || '',
-          email: c.email || '',
-          shopId: c.shop_id,
-          wantsReminders: true,
-          wantsPromotions: true,
-          createdAt: c.created_at,
-          metrics: {
-            lastAppointmentDate: c.last_visit,
-            daysSinceLastVisit,
-            totalAppointments: 0,
-            totalSpent: spent,
-            averageTicket: 0,
-            averageFrequencyDays: null,
-            estimatedNextVisitDate: null,
-            daysUntilEstimatedReturn: null,
-            favoriteBarber: null,
-            favoriteBarberName: null,
-            favoriteService: null,
-            favoriteServiceName: null,
-            lastContactDate: null,
-            loyaltyScore: 50
-          },
-          segment
-        };
-      });
+      const crmCustomers: CrmCustomer[] = (data || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        whatsapp: c.phone || '',
+        email: c.email || '',
+        shopId: c.shop_id,
+        wantsReminders: true,
+        wantsPromotions: true,
+        isClubMember: c.is_club_member || false,
+        createdAt: c.created_at,
+        metrics: {
+          lastAppointmentDate: c.last_appointment_date,
+          daysSinceLastVisit: c.days_since_last_visit,
+          totalAppointments: c.total_appointments || 0,
+          totalSpent: c.total_spent || 0,
+          averageTicket: (c.total_spent && c.total_appointments) ? (c.total_spent / c.total_appointments) : 0,
+          averageFrequencyDays: null,
+          estimatedNextVisitDate: null,
+          daysUntilEstimatedReturn: null,
+          favoriteBarber: null,
+          favoriteBarberName: null,
+          favoriteService: null,
+          favoriteServiceName: null,
+          lastContactDate: null,
+          loyaltyScore: 50
+        },
+        segment: c.segment || 'regular'
+      }));
 
       return { data: crmCustomers, error: null, success: true };
     } catch (e: any) {
@@ -168,5 +129,19 @@ export const crmService = {
 
   async saveConfig(_config: CrmConfig): Promise<CrmServiceResponse<boolean>> {
     return { data: true, error: null, success: true };
+  },
+
+  async toggleClubMembership(customerId: string, isClubMember: boolean): Promise<CrmServiceResponse<boolean>> {
+    try {
+      const { error } = await supabase
+        .from('customers')
+        .update({ is_club_member: isClubMember })
+        .eq('id', customerId);
+        
+      if (error) throw error;
+      return { data: true, error: null, success: true };
+    } catch (e: any) {
+      return { data: null, error: e.message, success: false };
+    }
   }
 };

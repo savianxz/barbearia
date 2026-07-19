@@ -6,15 +6,15 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { crmService } from '../../services/crm';
 import type { CrmCustomer, CrmSegment } from '../../services/crm/types';
 
-const segments: { value: CrmSegment | 'all'; label: string }[] = [
+const segments: { value: CrmSegment | 'all' | 'club'; label: string }[] = [
   { value: 'all',           label: 'Todos' },
-  { value: 'vip',           label: 'VIP' },
+  { value: 'new',           label: 'Novos' },
+  { value: 'regular',       label: 'Regulares' },
   { value: 'loyal',         label: 'Fiéis' },
-  { value: 'club_eligible', label: 'Clube' },
+  { value: 'club',          label: 'Clube' },
   { value: 'at_risk',       label: 'Em Risco' },
   { value: 'inactive',      label: 'Inativos' },
   { value: 'never_returned',label: 'Sem Retorno' },
-  { value: 'new',           label: 'Novos' },
 ];
 
 const loyaltyScore = (score: number) => {
@@ -34,7 +34,7 @@ export const ClientesPage: React.FC = () => {
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
   const [filtered, setFiltered] = useState<CrmCustomer[]>([]);
   const [search, setSearch] = useState('');
-  const [segment, setSegment] = useState<CrmSegment | 'all'>('all');
+  const [segment, setSegment] = useState<CrmSegment | 'all' | 'club'>('all');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,9 +45,22 @@ export const ClientesPage: React.FC = () => {
     });
   }, []);
 
+  const handleToggleClub = async (customerId: string, currentStatus: boolean) => {
+    setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, isClubMember: !currentStatus } : c));
+    const res = await crmService.toggleClubMembership(customerId, !currentStatus);
+    if (!res.success) {
+      setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, isClubMember: currentStatus } : c));
+      alert('Erro ao atualizar status do Clube.');
+    }
+  };
+
   useEffect(() => {
     let result = customers;
-    if (segment !== 'all') result = result.filter(c => c.segment === segment);
+    if (segment === 'club') {
+      result = result.filter(c => c.isClubMember);
+    } else if (segment !== 'all') {
+      result = result.filter(c => c.segment === segment);
+    }
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(c => c.name.toLowerCase().includes(q) || c.whatsapp.includes(q));
@@ -124,7 +137,20 @@ export const ClientesPage: React.FC = () => {
                     <p className="text-[11px] text-white/30 mt-0.5">{c.whatsapp}</p>
                   </div>
                 </div>
-                <SegmentBadge segment={c.segment} small />
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => handleToggleClub(c.id, c.isClubMember)}
+                    title={c.isClubMember ? "Remover do Clube" : "Adicionar ao Clube"}
+                    className={`inline-flex items-center rounded-full font-semibold tracking-wide px-2 py-0.5 text-[9px] transition-colors cursor-pointer ${
+                      c.isClubMember
+                        ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30'
+                        : 'bg-white/5 text-white/30 border border-white/10 hover:bg-blue-500/15 hover:text-blue-400 hover:border-blue-500/30'
+                    }`}
+                  >
+                    Clube
+                  </button>
+                  <SegmentBadge segment={c.segment} small />
+                </div>
               </div>
 
               {/* Stats grid */}

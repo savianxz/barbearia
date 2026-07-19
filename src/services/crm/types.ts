@@ -31,13 +31,12 @@ export interface CustomerMetrics {
  * Priority order (highest → lowest): vip, loyal, club_eligible, at_risk, inactive, never_returned, new
  */
 export type CrmSegment =
-  | 'vip'             // High spend, high frequency, high loyalty score
   | 'loyal'           // Consistent frequency and return
-  | 'club_eligible'   // High frequency but not yet on membership plan
   | 'at_risk'         // Overdue past their average return window
   | 'inactive'        // No visit in N+ days (configurable)
   | 'never_returned'  // Only 1 visit, never came back
-  | 'new';            // First visit within last M days
+  | 'new'             // First visit within last M days
+  | 'regular';        // Catch-all for those who don't fit other priorities
 
 // ─── CRM Customer ─────────────────────────────────────────────────────────
 
@@ -50,6 +49,7 @@ export interface CrmCustomer {
   shopId: string;
   wantsReminders: boolean;
   wantsPromotions: boolean;
+  isClubMember: boolean;
   createdAt: string;
   metrics: CustomerMetrics;
   segment: CrmSegment;
