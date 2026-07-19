@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/((?!_vercel|assets|favicon).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

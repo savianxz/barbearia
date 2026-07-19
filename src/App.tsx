@@ -10,10 +10,14 @@ import { CTASection } from './components/CTASection';
 import { Footer } from './components/Footer';
 import { BookingModal } from './components/booking/BookingModal';
 import { AdminApp } from './admin/AdminApp';
+import { PlatformLanding } from './components/PlatformLanding';
 import { useBooking } from './hooks/useBooking';
 import { useCurrentShop } from './hooks/useCurrentShop';
 import { usePublicBarbers } from './hooks/useBarbers';
 import { usePublicServices } from './hooks/useServices';
+
+// Prefixes that belong to the admin panel — never treated as shop slugs
+const ADMIN_PREFIXES = ['/admin', '/dashboard', '/settings'];
 
 function useRoute() {
   const [path, setPath] = useState(window.location.pathname);
@@ -36,33 +40,47 @@ function useRoute() {
 
 function App() {
   const { path, search, navigate } = useRoute();
-  
-  const slug = new URLSearchParams(search).get('loja') || undefined;
 
-  // Real data
+  // ── 1. Detect admin route BEFORE deriving any slug ────────────────────────
+  //    Guarantees '/admin' is never parsed as slug='admin'
+  const isAdminRoute = ADMIN_PREFIXES.some(prefix => path.startsWith(prefix));
+
+  // ── 2. Derive slug only when NOT an admin route ───────────────────────────
+  //    Priority: path segment (/fstreet) → legacy query param (?loja=fstreet)
+  const pathSegment = !isAdminRoute
+    ? path.split('/').filter(Boolean)[0]  // '/fstreet' → 'fstreet', '/' → undefined
+    : undefined;                           // '/admin'   → undefined (never a slug)
+  const querySlug = new URLSearchParams(search).get('loja') ?? undefined;
+  const slug = pathSegment || querySlug;  // retrocompat: ?loja= still works
+
+  // ── 3. Hooks — always called unconditionally (React rules) ────────────────
+  //    When isAdminRoute=true, slug=undefined so useCurrentShop fires no query
   const { data: shop, isLoading: shopLoading } = useCurrentShop(slug);
   const shopId = shop?.id;
   const { data: barbers = [] } = usePublicBarbers(shopId ?? '');
   const { data: services = [] } = usePublicServices(shopId ?? '');
-
   const booking = useBooking(shopId);
 
-  console.log('[Audit] App renderizado');
-  console.log('[Audit] Path:', path);
-  console.log('[Audit] Shop:', shop);
+  // ── 4. Conditional rendering (JSX only — no hooks below this line) ────────
 
-  // Admin Panel Route
-  if (path.startsWith('/admin') || path.startsWith('/dashboard') || path.startsWith('/settings')) {
+  // 4a. Admin routes — absolute priority
+  if (isAdminRoute) {
     return <AdminApp initialPath={path} />;
   }
 
-  // Shop Not Found logic
+  // 4b. Root with no slug — platform landing
+  if (!slug) {
+    return <PlatformLanding />;
+  }
+
+  // 4c. Slug exists but shop not found in DB
   if (!shopLoading && !shop) {
     return (
       <div className="min-h-screen bg-bg-dark flex flex-col items-center justify-center p-6 text-center">
         <h1 className="text-2xl sm:text-4xl font-display font-bold text-white mb-4 uppercase tracking-wider">Barbearia não encontrada</h1>
         <p className="text-text-secondary text-sm sm:text-base font-light max-w-md">
-          Acesse a URL correta fornecida pela sua barbearia (ex: <span className="text-gold font-mono">/?loja=nome-da-barbearia</span>).
+          Nenhuma barbearia encontrada para <span className="text-gold font-mono">/{slug}</span>.
+          Verifique o link fornecido pelo seu barbeiro.
         </p>
       </div>
     );
