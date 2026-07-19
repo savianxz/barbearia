@@ -133,7 +133,7 @@ export const servicesApi = {
 export const publicApi = {
   async getShop(shopId?: string, slug?: string): Promise<ApiResult<any>> {
     try {
-      const { data, error } = await supabase.rpc('get_public_shop', { p_shop_id: shopId || null, p_slug: slug || null }).single();
+      const { data, error } = await supabase.rpc('get_public_shop', { p_shop_id: shopId || null, p_slug: slug || null }).maybeSingle();
       if (error) throw error;
       return { data, error: null };
     } catch (e: any) {

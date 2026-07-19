@@ -9,6 +9,10 @@ export function useCurrentShop(slug?: string) {
       if (error) throw new Error(error);
       return data;
     },
-    staleTime: 1000 * 60 * 60, // 1 hour
+    enabled: !!slug,             // never fire without a slug
+    retry: false,                // don't retry — null result is not a transient error
+    staleTime: 1000 * 60 * 60,  // 1 hour
+    refetchOnWindowFocus: false, // prevent flash of "not found" when switching tabs
   });
 }
+
