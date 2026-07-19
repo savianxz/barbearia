@@ -117,24 +117,20 @@ export const appointmentService = {
     }
   },
 
-  async finalizeAppointment(id: string): Promise<{ error: string | null }> {
+  async finalizeAppointment(id: string, finalPrice?: number): Promise<{ error: string | null }> {
     try {
-      const { data: appt, error: getErr } = await supabase.from('appointments').select('customer_id, total_price, status').eq('id', id).single();
+      const { data: appt, error: getErr } = await supabase.from('appointments').select('status').eq('id', id).single();
       if (getErr) throw getErr;
       if (appt.status === 'completed') throw new Error('Agendamento já foi finalizado.');
       if (appt.status === 'canceled') throw new Error('Não é possível finalizar um agendamento cancelado.');
 
-      const { error: updErr } = await supabase.from('appointments').update({ status: 'completed' }).eq('id', id);
+      const updateData: any = { status: 'completed' };
+      if (finalPrice !== undefined) {
+        updateData.total_price = finalPrice;
+      }
+
+      const { error: updErr } = await supabase.from('appointments').update(updateData).eq('id', id);
       if (updErr) throw updErr;
-
-      const { data: customer, error: cErr } = await supabase.from('customers').select('total_visits, total_spent').eq('id', appt.customer_id).single();
-      if (cErr) throw cErr;
-
-      const newVisits = customer.total_visits + 1;
-      const newSpent = Number(customer.total_spent) + Number(appt.total_price);
-
-      const { error: cUpdErr } = await supabase.from('customers').update({ total_visits: newVisits, total_spent: newSpent, last_visit: new Date().toISOString() }).eq('id', appt.customer_id);
-      if (cUpdErr) throw cUpdErr;
 
       return { error: null };
     } catch (e: any) {

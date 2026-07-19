@@ -32,7 +32,7 @@ export function useCreateAppointment(shopId: string) {
 export function useFinalizeAppointment(shopId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => appointmentService.finalizeAppointment(id).then(r => {
+    mutationFn: ({ id, finalPrice }: { id: string; finalPrice?: number }) => appointmentService.finalizeAppointment(id, finalPrice).then(r => {
       if (r.error) throw new Error(r.error);
     }),
     onSuccess: () => {

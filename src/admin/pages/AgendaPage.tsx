@@ -59,7 +59,8 @@ export const AgendaPage: React.FC = () => {
 
   const [drawerAppt, setDrawerAppt] = useState<AppointmentWithDetails | null>(null);
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
-  const [finalizeTarget, setFinalizeTarget] = useState<string | null>(null);
+  const [finalizeTarget, setFinalizeTarget] = useState<AppointmentWithDetails | null>(null);
+  const [finalPriceStr, setFinalPriceStr] = useState<string>('');
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
 
   const filteredAppointments = allAppointments.filter(a => {
@@ -80,9 +81,14 @@ export const AgendaPage: React.FC = () => {
   const handleFinalize = async () => {
     if (!finalizeTarget) return;
     try {
-      await finalizeMut.mutateAsync(finalizeTarget);
+      const price = parseFloat(finalPriceStr.replace(',', '.'));
+      const finalPrice = isNaN(price) ? finalizeTarget.total_price : price;
+      
+      await finalizeMut.mutateAsync({ id: finalizeTarget.id, finalPrice });
       showToast('Atendimento finalizado!');
-      if (drawerAppt?.id === finalizeTarget) setDrawerAppt(prev => prev ? { ...prev, status: 'completed' } : null);
+      if (drawerAppt?.id === finalizeTarget.id) {
+        setDrawerAppt(prev => prev ? { ...prev, status: 'completed', total_price: finalPrice } : null);
+      }
     } catch (e: any) { showToast(e.message ?? 'Erro ao finalizar', 'error'); }
     setFinalizeTarget(null);
   };
@@ -327,7 +333,10 @@ export const AgendaPage: React.FC = () => {
                       <CheckCircle className="w-4 h-4" /> Confirmar Presença
                     </button>
                   )}
-                  <button onClick={() => setFinalizeTarget(drawerAppt.id)} className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[13px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20">
+                  <button onClick={() => {
+                    setFinalizeTarget(drawerAppt);
+                    setFinalPriceStr(drawerAppt.total_price.toFixed(2));
+                  }} className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[13px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20">
                     <CheckCircle className="w-5 h-5" /> Finalizar Atendimento
                   </button>
                   <button onClick={() => setCancelTarget(drawerAppt.id)} className="w-full py-3.5 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 font-bold text-[13px] tracking-widest uppercase transition-all cursor-pointer">
@@ -342,8 +351,43 @@ export const AgendaPage: React.FC = () => {
 
       {/* Dialogs */}
       <ConfirmDialog isOpen={!!cancelTarget} title="Cancelar Agendamento" message="Tem certeza que deseja cancelar? O horário ficará livre novamente." confirmLabel="Sim, Cancelar" danger onConfirm={handleCancel} onCancel={() => setCancelTarget(null)} />
-      <ConfirmDialog isOpen={!!finalizeTarget} title="Finalizar Atendimento" message="Confirmar conclusão? O valor será computado no histórico de gastos do cliente." confirmLabel="Finalizar" onConfirm={handleFinalize} onCancel={() => setFinalizeTarget(null)} />
       <ConfirmDialog isOpen={!!confirmTarget} title="Confirmar Presença" message="Marcar este agendamento como confirmado?" confirmLabel="Confirmar" onConfirm={handleConfirmStatus} onCancel={() => setConfirmTarget(null)} />
+      
+      {/* Finalize Dialog Custom */}
+      <AnimatePresence>
+        {finalizeTarget && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setFinalizeTarget(null)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl p-6 shadow-2xl">
+              <h3 className="text-lg font-bold text-white mb-2">Finalizar Atendimento</h3>
+              <p className="text-sm text-white/50 mb-6">Confirme o valor final cobrado do cliente.</p>
+              
+              <div className="mb-6">
+                <label className="block text-[11px] font-bold uppercase tracking-widest text-white/30 mb-2">Valor Final (R$)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold">R$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={finalPriceStr}
+                    onChange={(e) => setFinalPriceStr(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white font-bold text-lg focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setFinalizeTarget(null)} className="flex-1 py-3 rounded-xl border border-white/10 text-white/70 hover:text-white hover:bg-white/5 font-bold text-[13px] transition-all">
+                  Voltar
+                </button>
+                <button onClick={handleFinalize} className="flex-1 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[13px] shadow-lg shadow-emerald-500/20 transition-all">
+                  Finalizar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
