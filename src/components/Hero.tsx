@@ -32,7 +32,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
       />
 
       {/* Content */}
-      <div className="relative z-20 w-full max-w-5xl mx-auto px-5 sm:px-8 flex flex-col items-center text-center pt-20 pb-10">
+      <div className="relative z-20 w-full max-w-5xl mx-auto px-5 sm:px-8 flex flex-col items-center text-center pt-20 pb-10 sm:pb-24">
 
         {/* Badge */}
         <motion.div
@@ -43,7 +43,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
         >
           <Award className="w-3 h-3 md:w-3.5 md:h-3.5 text-gold" />
           <span className="text-[9px] md:text-[10px] uppercase font-bold tracking-widest text-gold">
-            A Experiência Masculina Definitiva
+            Barbearia Artesanal
           </span>
         </motion.div>
 
@@ -71,10 +71,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
           className="text-sm md:text-lg text-text-secondary max-w-lg md:max-w-2xl font-light tracking-wide mb-8 md:mb-12 leading-relaxed"
         >
           <span className="md:hidden">
-            Agendamento em menos de 30 segundos. Sofisticação clássica, técnicas modernas.
+            Corte, barba e acabamento feitos com cuidado. Agende o seu horário agora.
           </span>
           <span className="hidden md:inline">
-            Agendamento expresso em menos de 30 segundos. Sofisticação clássica, técnicas cirúrgicas modernas e um ambiente de puro luxo reservado para você.
+            Marque em segundos, chegue no horário, saia com um corte que você vai querer repetir. Sem enrolação, sem espera.
           </span>
         </motion.p>
 

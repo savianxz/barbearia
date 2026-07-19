@@ -61,7 +61,7 @@ export const Navbar: React.FC<NavbarProps> = ({ shop, onOpenBooking, onOpenAdmin
         }`}
       >
         {/* Mobile: 60px height | Desktop: 80px height */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-[60px] md:h-20 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-[60px] md:h-20 flex items-center gap-8">
           
           {/* Logo */}
           <a href="#" className="flex items-center gap-2.5 group" aria-label={`${shopName} — Início`}>
@@ -78,7 +78,7 @@ export const Navbar: React.FC<NavbarProps> = ({ shop, onOpenBooking, onOpenAdmin
           </a>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden md:flex items-center gap-10 flex-1 justify-center">
             {menuItems.map((item) => (
               <a
                 key={item.name}
@@ -92,7 +92,7 @@ export const Navbar: React.FC<NavbarProps> = ({ shop, onOpenBooking, onOpenAdmin
           </div>
 
           {/* Desktop CTA */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-3 ml-auto flex-shrink-0">
             <button
               onClick={onOpenAdmin}
               className="px-4 py-2.5 border border-neutral-850 hover:border-gold/30 text-text-secondary hover:text-white bg-transparent hover:bg-neutral-900/60 transition-all duration-300 font-semibold text-xs tracking-widest uppercase flex items-center gap-1.5 cursor-pointer"
