@@ -1,6 +1,5 @@
 import { supabase } from './supabase/client';
 import type { Appointment, AppointmentWithDetails, AppointmentStatus } from '../types/scheduling';
-import { availabilityService } from './availabilityService';
 
 type ApiResult<T> = { data: T | null; error: string | null };
 
@@ -8,11 +7,11 @@ export interface CreateBookingData {
   shop_id: string;
   customer_name: string;
   customer_phone: string;
+  customer_email?: string;
   barber_id: string;
   service_id: string;
   start_time: string;
-  end_time: string;
-  total_price: number;
+  // end_time e total_price são calculados pelo backend (RPC + trigger)
 }
 
 export const appointmentService = {
@@ -25,7 +24,7 @@ export const appointmentService = {
         .from('appointments')
         .select(`
           *,
-          customer:customers (name, phone, total_visits),
+          customer:customers (name, phone),
           barber:barbers (name, color),
           service:services (name, duration_minutes)
         `)
@@ -55,52 +54,37 @@ export const appointmentService = {
   },
 
   /**
-   * Cria um agendamento novo com Upsert no cliente
+   * Cria um agendamento público via RPC (SECURITY DEFINER).
+   * O end_time é calculado no backend via duration_minutes do serviço.
+   * O total_price é calculado pela trigger validate_appointment_business_hours,
+   * respeitando overrides por barbeiro — NUNCA confiamos no valor do frontend.
    */
   async createAppointment(data: CreateBookingData): Promise<ApiResult<Appointment>> {
     try {
-      const isAvailable = await availabilityService.checkAvailability(data.barber_id, data.start_time, data.end_time);
-      if (!isAvailable) {
-        throw new Error('Este horário não está mais disponível para este profissional.');
-      }
+      const { data: appointmentId, error } = await supabase.rpc('create_public_appointment', {
+        p_shop_id: data.shop_id,
+        p_barber_id: data.barber_id,
+        p_service_id: data.service_id,
+        p_start_time: data.start_time,
+        p_customer_name: data.customer_name,
+        p_customer_phone: data.customer_phone,
+        p_customer_email: data.customer_email ?? null,
+      });
 
-      let customerId = '';
-      const { data: existingCustomer } = await supabase
-        .from('customers')
-        .select('id')
-        .eq('shop_id', data.shop_id)
-        .eq('phone', data.customer_phone)
-        .single();
+      if (error) throw error;
 
-      if (existingCustomer) {
-        customerId = existingCustomer.id;
-      } else {
-        const { data: newCustomer, error: cError } = await supabase
-          .from('customers')
-          .insert({ shop_id: data.shop_id, name: data.customer_name, phone: data.customer_phone, total_visits: 0, total_spent: 0 })
-          .select('id')
-          .single();
-
-        if (cError) throw cError;
-        customerId = newCustomer.id;
-      }
-
-      const { data: appointment, error: aError } = await supabase
+      // Busca o appointment completo para retornar ao frontend (ex: para o código de confirmação)
+      const { data: appointment, error: fetchErr } = await supabase
         .from('appointments')
-        .insert({
-          shop_id: data.shop_id,
-          customer_id: customerId,
-          barber_id: data.barber_id,
-          service_id: data.service_id,
-          start_time: data.start_time,
-          end_time: data.end_time,
-          status: 'scheduled',
-          total_price: data.total_price,
-        })
-        .select()
+        .select('*')
+        .eq('id', appointmentId)
         .single();
 
-      if (aError) throw aError;
+      if (fetchErr) {
+        // Se não conseguir buscar os detalhes (RLS de anon), retorna um objeto mínimo
+        return { data: { id: appointmentId } as unknown as Appointment, error: null };
+      }
+
       return { data: appointment as Appointment, error: null };
     } catch (e: any) {
       return { data: null, error: e.message };
@@ -109,7 +93,7 @@ export const appointmentService = {
 
   async cancelAppointment(id: string): Promise<{ error: string | null }> {
     try {
-      const { error } = await supabase.from('appointments').update({ status: 'canceled' }).eq('id', id);
+      const { error } = await supabase.from('appointments').update({ status: 'cancelled' }).eq('id', id);
       if (error) throw error;
       return { error: null };
     } catch (e: any) {
@@ -117,37 +101,78 @@ export const appointmentService = {
     }
   },
 
-  async finalizeAppointment(id: string, finalPrice?: number): Promise<{ error: string | null }> {
+  async finalizeAppointment(
+    id: string, 
+    finalPrice?: number, 
+    paymentMethod?: 'cash' | 'card' | 'pix' | 'mixed', 
+    paymentNotes?: string,
+    paymentStatus?: 'pending' | 'paid'
+  ): Promise<{ error: string | null }> {
     try {
-      const { data: appt, error: getErr } = await supabase.from('appointments').select('status, customer_id, total_price').eq('id', id).single();
+      const { data: appt, error: getErr } = await supabase.from('appointments').select('status, customer_id, total_price, payment_status').eq('id', id).single();
       if (getErr) throw getErr;
-      if (appt.status === 'completed') throw new Error('Agendamento já foi finalizado.');
-      if (appt.status === 'canceled') throw new Error('Não é possível finalizar um agendamento cancelado.');
+      if (appt.status === 'completed' && appt.payment_status === 'paid') throw new Error('Agendamento já foi finalizado e pago.');
+      if (appt.status === 'cancelled') throw new Error('Não é possível finalizar um agendamento cancelado.');
 
       const updateData: any = { status: 'completed' };
-      const priceToCharge = finalPrice !== undefined ? finalPrice : appt.total_price;
-      
-      if (finalPrice !== undefined) {
-        updateData.total_price = finalPrice;
-      }
+      if (finalPrice !== undefined) updateData.total_price = finalPrice;
+      if (paymentMethod) updateData.payment_method = paymentMethod;
+      if (paymentNotes) updateData.payment_notes = paymentNotes;
+      if (paymentStatus) updateData.payment_status = paymentStatus;
 
       const { error: updErr } = await supabase.from('appointments').update(updateData).eq('id', id);
       if (updErr) throw updErr;
 
-      // Updating customer metrics manually since there is no DB trigger doing this
-      const { data: customer, error: cErr } = await supabase.from('customers').select('total_visits, total_spent').eq('id', appt.customer_id).single();
-      if (cErr) throw cErr;
+      return { error: null };
+    } catch (e: any) {
+      return { error: e.message };
+    }
+  },
 
-      const newVisits = (customer.total_visits || 0) + 1;
-      const newSpent = Number(customer.total_spent || 0) + Number(priceToCharge);
+  async editFinishedAppointment(
+    id: string,
+    shopId: string,
+    staffId: string,
+    status: 'completed' | 'cancelled' | 'no_show',
+    finalPrice?: number,
+    paymentMethod?: 'cash' | 'card' | 'pix' | 'mixed' | '',
+    paymentNotes?: string,
+    paymentStatus?: 'pending' | 'paid' | ''
+  ): Promise<{ error: string | null }> {
+    try {
+      const { data: appt, error: getErr } = await supabase
+        .from('appointments')
+        .select('shop_id')
+        .eq('id', id)
+        .single();
+        
+      if (getErr) throw getErr;
+      if (appt.shop_id !== shopId) throw new Error('Acesso negado. O agendamento pertence a outra loja.');
 
-      const { error: cUpdErr } = await supabase.from('customers').update({ 
-        total_visits: newVisits, 
-        total_spent: newSpent, 
-        last_visit: new Date().toISOString() 
-      }).eq('id', appt.customer_id);
+      const updateData: any = { 
+        status,
+        edited_by: staffId,
+        edited_at: new Date().toISOString()
+      };
       
-      if (cUpdErr) throw cUpdErr;
+      if (status === 'completed') {
+        if (finalPrice !== undefined) updateData.total_price = finalPrice;
+        if (paymentMethod) updateData.payment_method = paymentMethod;
+        if (paymentNotes) updateData.payment_notes = paymentNotes;
+        if (paymentStatus) updateData.payment_status = paymentStatus;
+      } else {
+        updateData.payment_status = 'pending';
+        updateData.payment_method = null;
+        updateData.payment_notes = null;
+      }
+
+      const { error: updErr } = await supabase
+        .from('appointments')
+        .update(updateData)
+        .eq('id', id)
+        .eq('shop_id', shopId);
+        
+      if (updErr) throw updErr;
 
       return { error: null };
     } catch (e: any) {

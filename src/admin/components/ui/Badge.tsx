@@ -16,7 +16,8 @@ const segmentConfig: Record<CrmSegment, { label: string; color: string }> = {
 const statusConfig: Record<AppointmentStatus, { label: string; color: string; dot: string }> = {
   scheduled:  { label: 'Agendado',   color: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',      dot: 'bg-amber-400' },
   confirmed:  { label: 'Confirmado', color: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30', dot: 'bg-emerald-400' },
-  canceled:   { label: 'Cancelado',  color: 'bg-red-500/15 text-red-400 border border-red-500/30',            dot: 'bg-red-400' },
+  cancelled:  { label: 'Cancelado',  color: 'bg-red-500/15 text-red-400 border border-red-500/30',            dot: 'bg-red-400' },
+  no_show:    { label: 'Faltou',     color: 'bg-neutral-500/20 text-neutral-400 border border-neutral-500/30', dot: 'bg-neutral-400' },
   completed:  { label: 'Concluído',  color: 'bg-neutral-700/40 text-neutral-300 border border-neutral-600/30', dot: 'bg-neutral-400' },
 };
 

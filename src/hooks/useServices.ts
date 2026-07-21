@@ -20,11 +20,11 @@ export function useServices(shopId: string) {
   });
 }
 
-export function usePublicServices(shopId: string) {
+export function usePublicServices(shopId: string, barberId?: string | null) {
   return useQuery({
-    queryKey: ['publicServices', shopId],
+    queryKey: ['publicServices', shopId, barberId ?? null],
     queryFn: async () => {
-      const { data, error } = await publicApi.listServices(shopId);
+      const { data, error } = await publicApi.listServices(shopId, barberId);
       if (error) throw new Error(error);
       return data ?? [];
     },

@@ -8,6 +8,7 @@ import { StatCard } from '../components/ui/StatCard';
 import { StatusBadge } from '../components/ui/Badge';
 import { supabase } from '../../services/supabase/client';
 import { useAuth } from '../../contexts/AuthContext';
+import { crmService } from '../../services/crm';
 import type { AppointmentStatus } from '../../types/scheduling';
 
 // ── Tipos locais ───────────────────────────────────────────────────────────────
@@ -70,33 +71,20 @@ export const DashboardPage: React.FC = () => {
     setError(null);
 
     const today = todayIso();
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const sixtyDaysAgo = new Date(now);
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
-    // 1. Total de clientes
-    const { count: totalCustomers, error: custErr } = await supabase
-      .from('customers')
-      .select('*', { count: 'exact', head: true })
-      .eq('shop_id', shopId);
-
-    if (custErr) { setError(custErr.message); setLoading(false); return; }
-
-    // 2. Clientes inativos (sem visita há 30+ dias — last_visit < 30 dias atrás)
-    const { count: inactiveCustomers, error: _inactErr } = await supabase
-      .from('customers')
-      .select('*', { count: 'exact', head: true })
-      .eq('shop_id', shopId)
-      .lt('last_visit', thirtyDaysAgo.toISOString().split('T')[0]);
-
-    // 3. Clientes em risco (sem visita há 60+ dias)
-    const { count: atRiskCustomers, error: _riskErr } = await supabase
-      .from('customers')
-      .select('*', { count: 'exact', head: true })
-      .eq('shop_id', shopId)
-      .lt('last_visit', sixtyDaysAgo.toISOString().split('T')[0]);
+    // 1-3. Total, inativos e em risco de clientes via RPC unificada
+    const { data: custData, success: crmSuccess } = await crmService.getCrmCustomers(shopId);
+    let totalCustomers = 0;
+    let inactiveCustomers = 0;
+    let atRiskCustomers = 0;
+    
+    if (crmSuccess && custData) {
+      totalCustomers = custData.length;
+      for (const c of custData) {
+        if (c.segment === 'inactive') inactiveCustomers++;
+        else if (c.segment === 'at_risk') atRiskCustomers++;
+      }
+    }
 
     // 4. Agendamentos de hoje
     const { data: apptData, error: apptErr } = await supabase

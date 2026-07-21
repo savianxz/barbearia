@@ -65,8 +65,13 @@ export const Barbers: React.FC<BarbersProps> = ({ barbers, onSelectBarber }) => 
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: '-40px' }}
                   transition={{ duration: 0.5, delay: index * 0.08, ease: [0.16, 1, 0.3, 1] }}
-                  className="relative bg-card-dark border border-border-premium overflow-hidden active:scale-[0.99] transition-transform duration-150"
+                  className={`relative bg-card-dark border overflow-hidden active:scale-[0.99] transition-transform duration-150 ${barber.is_featured ? 'border-2 border-gold shadow-[0_0_15px_rgba(212,175,55,0.15)]' : 'border-border-premium'}`}
                 >
+                  {barber.is_featured && (
+                    <div className="absolute top-0 right-0 bg-gold text-black text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-bl-sm shadow-sm z-20">
+                      Em Destaque
+                    </div>
+                  )}
                   <div className="flex gap-4 p-4">
                     {/* Photo */}
                     <div 
@@ -165,8 +170,13 @@ export const Barbers: React.FC<BarbersProps> = ({ barbers, onSelectBarber }) => 
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: '-50px' }}
                   transition={{ duration: 0.8, delay: index * 0.15, ease: [0.16, 1, 0.3, 1] }}
-                  className="group relative flex flex-col bg-card-dark border border-border-premium overflow-hidden transition-all duration-300 hover:border-gold/30 hover:shadow-[0_20px_40px_rgba(212,175,55,0.06)]"
+                  className={`group relative flex flex-col bg-card-dark border overflow-hidden transition-all duration-300 hover:border-gold/30 hover:shadow-[0_20px_40px_rgba(212,175,55,0.06)] ${barber.is_featured ? 'border-2 border-gold shadow-[0_0_20px_rgba(212,175,55,0.15)]' : 'border-border-premium'}`}
                 >
+                  {barber.is_featured && (
+                    <div className="absolute top-0 right-0 bg-gold text-black text-[10px] uppercase tracking-widest font-bold px-3 py-1 rounded-bl-md shadow-sm z-20">
+                      Recomendado
+                    </div>
+                  )}
                   {/* Photo */}
                   <div 
                     className="relative aspect-[4/5] overflow-hidden bg-neutral-900 flex items-center justify-center text-7xl font-bold text-black"

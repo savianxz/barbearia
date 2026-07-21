@@ -49,6 +49,8 @@ export interface Barber {
   avatar_url: string | null;
   color: string | null;
   is_active: boolean;
+  display_order: number;
+  is_featured: boolean;
   created_at: string;
 }
 

@@ -3,8 +3,8 @@ import { motion } from 'framer-motion';
 import { MessageCircle, RefreshCw, AlertTriangle, TrendingDown, Zap, Users } from 'lucide-react';
 import { SegmentBadge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
-import { supabase } from '../../services/supabase/client';
 import { useAuth } from '../../contexts/AuthContext';
+import { crmService } from '../../services/crm';
 import type { CrmSegment } from '../../services/crm/types';
 
 // Tipos locais
@@ -43,12 +43,7 @@ const severityBorder: Record<string, string> = {
 
 const recoverySegments: CrmSegment[] = ['at_risk', 'inactive'];
 
-const calculateDays = (dateStr: string | null): number | null => {
-  if (!dateStr) return null;
-  const last = new Date(dateStr).getTime();
-  const now = new Date().getTime();
-  return Math.max(0, Math.floor((now - last) / (1000 * 3600 * 24)));
-};
+
 
 export const CrmPage: React.FC = () => {
   const { staff } = useAuth();
@@ -66,13 +61,10 @@ export const CrmPage: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    // Buscar clientes da loja
-    const { data: custData, error: custErr } = await supabase
-      .from('customers')
-      .select('id, name, phone, last_visit, total_spent')
-      .eq('shop_id', shopId);
+    // Buscar clientes via RPC unificada (mesma da ClientesPage)
+    const { data: custData, success, error: apiErr } = await crmService.getCrmCustomers(shopId);
 
-    if (custErr) { setError(custErr.message); setLoading(false); return; }
+    if (!success) { setError(apiErr || 'Erro ao carregar CRM'); setLoading(false); return; }
 
     const crmCustomers: CrmCustomerReal[] = [];
     let atRiskCount = 0;
@@ -82,28 +74,22 @@ export const CrmPage: React.FC = () => {
     let inactiveValue = 0;
 
     for (const c of (custData || [])) {
-      const days = calculateDays(c.last_visit);
-      let segment: CrmSegment = 'new';
+      const segment = c.segment;
       
-      if (days !== null) {
-        if (days > 90) {
-          segment = 'inactive';
-          inactiveCount++;
-          inactiveValue += Number(c.total_spent);
-          if (c.total_spent > 300) {
-            vipRecoveryCount++;
-          }
-        } else if (days > 45) {
-          segment = 'at_risk';
-          atRiskCount++;
-          atRiskValue += Number(c.total_spent);
-        } else {
-          segment = 'loyal'; // Simplificação
+      if (segment === 'inactive') {
+        inactiveCount++;
+        inactiveValue += c.metrics.totalSpent;
+        if (c.metrics.totalSpent > 300) {
+          vipRecoveryCount++;
         }
+      } else if (segment === 'at_risk') {
+        atRiskCount++;
+        atRiskValue += c.metrics.totalSpent;
       }
 
       // Probabilidade de retorno (heurística simples para UI)
       let prob = null;
+      const days = c.metrics.daysSinceLastVisit;
       if (days !== null) {
         prob = Math.max(0, Math.min(100, Math.round(100 - (days / 1.5))));
       }
@@ -111,11 +97,11 @@ export const CrmPage: React.FC = () => {
       crmCustomers.push({
         id: c.id,
         name: c.name,
-        whatsapp: c.phone || '',
-        lastVisit: c.last_visit,
+        whatsapp: c.whatsapp,
+        lastVisit: c.metrics.lastAppointmentDate,
         daysSinceLastVisit: days,
-        totalSpent: Number(c.total_spent),
-        segment,
+        totalSpent: c.metrics.totalSpent,
+        segment: segment,
         returnProbability: prob
       });
     }
@@ -161,7 +147,7 @@ export const CrmPage: React.FC = () => {
         title: 'Retenção Saudável',
         description: 'Nenhum alerta crítico de evasão no momento.',
         severity: 'info',
-        count: custData.length,
+        count: (custData || []).length,
       });
     }
 

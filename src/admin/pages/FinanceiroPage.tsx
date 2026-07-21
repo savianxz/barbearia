@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { DollarSign, TrendingUp, Scissors, Users } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { DollarSign, TrendingUp, Scissors, Users, Clock, AlertCircle } from 'lucide-react';
 import { StatCard } from '../components/ui/StatCard';
-import { useAppointments } from '../../hooks/useAppointments';
+import { useAppointments, useFinalizeAppointment } from '../../hooks/useAppointments';
 import { useAuth } from '../../contexts/AuthContext';
+import type { AppointmentWithDetails } from '../../types/scheduling';
 
 const fmt = (n: number) => `R$ ${n.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.')}`;
 
@@ -52,10 +53,47 @@ export const FinanceiroPage: React.FC = () => {
   const { start, end } = useMemo(() => getDateRange(range), [range]);
   
   const { data: allAppointments = [], isLoading } = useAppointments(shopId, start, end);
+  const finalizeMut = useFinalizeAppointment(shopId);
 
-  const completed = allAppointments.filter(a => a.status === 'completed');
+  const [finalizeTarget, setFinalizeTarget] = useState<AppointmentWithDetails | null>(null);
+  const [finalPriceStr, setFinalPriceStr] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<'cash'|'card'|'pix'|'mixed'|''>('');
+  const [paymentNotes, setPaymentNotes] = useState<string>('');
+
+  const handleFinalize = async () => {
+    if (!finalizeTarget) return;
+    if (!paymentMethod) return alert('Selecione uma forma de pagamento.');
+    try {
+      let price = parseFloat(finalPriceStr.replace(',', '.'));
+      if (isNaN(price)) price = finalizeTarget.total_price;
+      if (price < 0.01) return alert('O valor mínimo deve ser R$ 0,01');
+      
+      await finalizeMut.mutateAsync({
+        id: finalizeTarget.id,
+        finalPrice: price,
+        paymentStatus: 'paid',
+        paymentMethod: paymentMethod as any,
+        paymentNotes: paymentMethod === 'mixed' ? paymentNotes : undefined
+      });
+      setFinalizeTarget(null);
+    } catch (e: any) { alert(e.message ?? 'Erro ao finalizar'); }
+  };
+
+  const completed = allAppointments.filter(a => a.status === 'completed' && a.payment_status === 'paid');
+  const pendingAppointments = allAppointments.filter(a => a.status === 'completed' && a.payment_status === 'pending');
+  
   const revenue = completed.reduce((sum, a) => sum + Number(a.total_price || 0), 0);
+  const pendingValue = pendingAppointments.reduce((sum, a) => sum + Number(a.total_price || 0), 0);
   const avgTicket = completed.length ? revenue / completed.length : 0;
+
+  // Formas de pagamento
+  const paymentMap: Record<string, number> = { cash: 0, card: 0, pix: 0, mixed: 0 };
+  completed.forEach(a => {
+    const method = a.payment_method;
+    if (method && paymentMap[method] !== undefined) {
+      paymentMap[method] += Number(a.total_price || 0);
+    }
+  });
 
   // Receita por barbeiro
   const barberMap: Record<string, { name: string; revenue: number; count: number }> = {};
@@ -111,12 +149,36 @@ export const FinanceiroPage: React.FC = () => {
       {/* Stats */}
       <motion.div
         initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-        className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+        className="grid grid-cols-2 lg:grid-cols-5 gap-3"
       >
         <StatCard label="Receita Total"       value={fmt(revenue)}              icon={<DollarSign className="w-4 h-4" />} accent="gold" />
+        <StatCard label="Aguardando Pagamento" value={fmt(pendingValue)}         icon={<TrendingUp className="w-4 h-4" />} accent="red" />
         <StatCard label="Atendimentos"        value={completed.length}           icon={<Scissors className="w-4 h-4" />}  accent="green" />
         <StatCard label="Ticket Médio"        value={fmt(avgTicket)}             icon={<TrendingUp className="w-4 h-4" />} accent="blue" />
         <StatCard label="Clientes Atendidos"  value={new Set(completed.map(a => a.customer_id)).size} icon={<Users className="w-4 h-4" />} accent="default" />
+      </motion.div>
+
+      {/* Payment methods */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+        className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+      >
+        <div className="bg-[#111111] border border-white/6 rounded-xl p-4 flex items-center justify-between">
+          <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Dinheiro</span>
+          <span className="text-[13px] font-bold text-emerald-400">{fmt(paymentMap.cash)}</span>
+        </div>
+        <div className="bg-[#111111] border border-white/6 rounded-xl p-4 flex items-center justify-between">
+          <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Cartão</span>
+          <span className="text-[13px] font-bold text-blue-400">{fmt(paymentMap.card)}</span>
+        </div>
+        <div className="bg-[#111111] border border-white/6 rounded-xl p-4 flex items-center justify-between">
+          <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Pix</span>
+          <span className="text-[13px] font-bold text-purple-400">{fmt(paymentMap.pix)}</span>
+        </div>
+        <div className="bg-[#111111] border border-white/6 rounded-xl p-4 flex items-center justify-between">
+          <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Misto</span>
+          <span className="text-[13px] font-bold text-[#D4AF37]">{fmt(paymentMap.mixed)}</span>
+        </div>
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -177,6 +239,110 @@ export const FinanceiroPage: React.FC = () => {
           )}
         </motion.div>
       </div>
+
+      {/* Pending List */}
+      {pendingAppointments.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+          className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-5"
+        >
+          <div className="flex items-center gap-2 mb-4">
+            <AlertCircle className="w-4 h-4 text-amber-400" />
+            <h3 className="text-[11px] font-semibold tracking-widest uppercase text-amber-400">Pagamentos Pendentes</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {pendingAppointments.map(appt => (
+              <div 
+                key={appt.id} 
+                onClick={() => {
+                  setFinalizeTarget(appt);
+                  setFinalPriceStr(appt.total_price.toFixed(2));
+                  setPaymentMethod('');
+                  setPaymentNotes('');
+                }}
+                className="bg-[#111] border border-white/10 rounded-xl p-4 cursor-pointer hover:border-amber-500/40 transition-colors"
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="text-[13px] font-bold text-white">{appt.customer?.name}</p>
+                    <p className="text-[11px] text-white/40">{appt.service?.name}</p>
+                  </div>
+                  <span className="text-[13px] font-bold text-amber-400">R$ {appt.total_price.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-white/30 text-[10px] uppercase font-bold tracking-widest">
+                  <Clock className="w-3 h-3" />
+                  <span>{new Date(appt.start_time).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Finalize Dialog (Pagamento) */}
+      <AnimatePresence>
+        {finalizeTarget && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setFinalizeTarget(null)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl p-6 shadow-2xl">
+              <h3 className="text-lg font-bold text-white mb-2">Confirmar Pagamento</h3>
+              <p className="text-sm text-white/50 mb-6">Confirme o valor final e a forma de pagamento de {finalizeTarget.customer?.name}.</p>
+              
+              <div className="mb-6">
+                <label className="block text-[11px] font-bold uppercase tracking-widest text-white/30 mb-2">Valor Final (R$)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold">R$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={finalPriceStr}
+                    onChange={(e) => setFinalPriceStr(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white font-bold text-lg focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                  />
+                </div>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-[11px] font-bold uppercase tracking-widest text-white/30 mb-2">Forma de Pagamento *</label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as any)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-[13px] text-white focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                >
+                  <option value="" disabled>Selecione...</option>
+                  <option value="cash">Dinheiro</option>
+                  <option value="pix">Pix</option>
+                  <option value="card">Cartão (Crédito/Débito)</option>
+                  <option value="mixed">Misto (Ex: Dinheiro + Pix)</option>
+                </select>
+              </div>
+
+              {paymentMethod === 'mixed' && (
+                <div className="mb-6">
+                  <label className="block text-[11px] font-bold uppercase tracking-widest text-white/30 mb-2">Detalhes da Divisão</label>
+                  <input
+                    type="text"
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    placeholder="Ex: R$ 20 Pix + R$ 30 Dinheiro"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-[13px] text-white placeholder:text-white/20 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                  />
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button onClick={() => setFinalizeTarget(null)} className="flex-1 py-3 rounded-xl border border-white/10 text-white/70 hover:text-white hover:bg-white/5 font-bold text-[13px] transition-all">
+                  Cancelar
+                </button>
+                <button onClick={handleFinalize} className="flex-[2] py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[11px] uppercase tracking-widest shadow-lg shadow-emerald-500/20 transition-all">
+                  Confirmar Pagamento
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

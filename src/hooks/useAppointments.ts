@@ -30,14 +30,39 @@ export function useCreateAppointment(shopId: string) {
 }
 
 export function useFinalizeAppointment(shopId: string) {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: ({ id, finalPrice }: { id: string; finalPrice?: number }) => appointmentService.finalizeAppointment(id, finalPrice).then(r => {
-      if (r.error) throw new Error(r.error);
-    }),
+    mutationFn: ({ id, finalPrice, paymentMethod, paymentNotes, paymentStatus }: { id: string; finalPrice?: number; paymentMethod?: 'cash' | 'card' | 'pix' | 'mixed'; paymentNotes?: string; paymentStatus?: 'pending'|'paid' }) => 
+      appointmentService.finalizeAppointment(id, finalPrice, paymentMethod, paymentNotes, paymentStatus).then(r => {
+        if (r.error) throw new Error(r.error);
+      }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['appointments', shopId] });
-      qc.invalidateQueries({ queryKey: ['customers', shopId] });
+      queryClient.invalidateQueries({ queryKey: ['appointments', shopId] });
+      queryClient.invalidateQueries({ queryKey: ['customers', shopId] });
+    },
+  });
+}
+
+export function useEditFinishedAppointment(shopId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, staffId, status, finalPrice, paymentMethod, paymentNotes, paymentStatus }: { 
+      id: string; 
+      staffId: string;
+      status: 'completed' | 'cancelled' | 'no_show';
+      finalPrice?: number; 
+      paymentMethod?: 'cash' | 'card' | 'pix' | 'mixed' | ''; 
+      paymentNotes?: string; 
+      paymentStatus?: 'pending'|'paid'|'' 
+    }) => 
+      appointmentService.editFinishedAppointment(id, shopId, staffId, status, finalPrice, paymentMethod, paymentNotes, paymentStatus).then(r => {
+        if (r.error) throw new Error(r.error);
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['appointments', shopId] });
+      queryClient.invalidateQueries({ queryKey: ['customers', shopId] });
     },
   });
 }

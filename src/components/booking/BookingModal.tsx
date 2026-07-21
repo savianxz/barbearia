@@ -446,25 +446,100 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             {/* ═══ STEP 2: SERVIÇO ════════════════════════════════════════ */}
             {step === 2 && (
               <motion.div key="s2" variants={stepVariants} initial="initial" animate="animate" exit="exit" transition={stepTransition}
-                className="p-4 sm:p-6 flex flex-col gap-3">
-                {services.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => selectService(s)}
-                    className="group flex items-center justify-between p-4 border border-border-premium bg-neutral-900 hover:border-gold/30 active:scale-[0.99] transition-all duration-200 text-left w-full min-h-[64px]"
-                  >
-                    <div className="flex flex-col pr-4 min-w-0 flex-grow">
-                      <h4 className="font-semibold text-white tracking-wide text-sm uppercase group-hover:text-gold transition-colors truncate">{s.name}</h4>
+                className="p-4 sm:p-6 flex flex-col gap-6">
+                
+                {/* Combos em Destaque */}
+                {services.filter(s => s.is_combo).length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Star className="w-4 h-4 text-gold fill-gold/20" />
+                      <h3 className="font-display font-bold text-white uppercase tracking-widest text-[11px]">Combos & Custo-Benefício</h3>
                     </div>
-                    <div className="flex items-center gap-3 flex-shrink-0 text-right">
-                      <div className="flex flex-col">
-                        <span className="text-base font-bold text-gold">R${s.price}</span>
-                        <span className="text-[10px] text-text-secondary">{s.duration_minutes}min</span>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-gold/50 group-hover:text-gold transition-colors" />
-                    </div>
-                  </button>
-                ))}
+                    {services.filter(s => s.is_combo).map((s) => {
+                      // Calcula preço original baseado no nome das partes do combo
+                      const parts = (s.combo_includes || s.name).split('+').map(p => p.trim().toLowerCase());
+                      const avulsos = services.filter(reg => !reg.is_combo);
+                      let originalPrice = 0;
+                      parts.forEach(part => {
+                        const match = avulsos.find(reg => reg.name.toLowerCase() === part);
+                        if (match) originalPrice += Number(match.price);
+                      });
+                      const savings = originalPrice > s.price ? originalPrice - s.price : 0;
+
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => selectService(s)}
+                          className="group relative flex flex-col p-4 border border-gold/40 bg-gold/5 hover:border-gold active:scale-[0.99] transition-all duration-200 text-left w-full min-h-[64px] overflow-hidden"
+                        >
+                          <div className="absolute top-0 right-0 bg-gold text-black text-[9px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-bl-sm shadow-sm">
+                            Em Alta
+                          </div>
+                          <div className="flex items-start justify-between w-full">
+                            <div className="flex flex-col pr-4 min-w-0 flex-grow pt-1">
+                              <h4 className="font-display font-bold text-gold tracking-wider text-sm uppercase truncate">{s.name}</h4>
+                              {s.combo_includes && s.combo_includes !== s.name && (
+                                <p className="text-[11px] text-text-secondary mt-1 font-light leading-relaxed">
+                                  Inclui: <span className="text-white/80">{s.combo_includes}</span>
+                                </p>
+                              )}
+                              {savings > 0 && (
+                                <p className="text-[10px] text-green-400 mt-1 font-medium tracking-wide">
+                                  Economize R$ {savings.toFixed(2).replace('.', ',')}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 flex-shrink-0 pt-1">
+                              <div className="flex flex-col items-end">
+                                {savings > 0 && (
+                                  <span className="text-[10px] text-text-secondary line-through mb-0.5">
+                                    R$ {originalPrice.toFixed(2)}
+                                  </span>
+                                )}
+                                <span className="text-base font-bold text-gold">R$ {s.price}</span>
+                                <span className="text-[10px] text-text-secondary mt-0.5 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" /> {s.duration_minutes}min
+                                </span>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-gold/50 group-hover:text-gold transition-colors" />
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Serviços Avulsos */}
+                {services.filter(s => !s.is_combo).length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <h3 className="font-display font-bold text-white/50 uppercase tracking-widest text-[11px] mb-1">Serviços Avulsos</h3>
+                    {services.filter(s => !s.is_combo).map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => selectService(s)}
+                        className="group flex items-center justify-between p-4 border border-border-premium bg-neutral-900/80 hover:border-gold/30 hover:bg-neutral-900 active:scale-[0.99] transition-all duration-200 text-left w-full min-h-[64px]"
+                      >
+                        <div className="flex flex-col pr-4 min-w-0 flex-grow">
+                          <h4 className="font-semibold text-white tracking-wide text-sm uppercase group-hover:text-gold transition-colors truncate">{s.name}</h4>
+                          {s.combo_includes && s.combo_includes !== s.name && (
+                            <p className="text-[11px] text-text-secondary mt-1">{s.combo_includes}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 flex-shrink-0 text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="text-sm font-bold text-white group-hover:text-gold transition-colors">R$ {s.price}</span>
+                            <span className="text-[10px] text-text-secondary mt-0.5 flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> {s.duration_minutes}min
+                            </span>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-gold/30 group-hover:text-gold transition-colors" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
               </motion.div>
             )}
 

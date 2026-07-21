@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Upload } from 'lucide-react';
+import imageCompression from 'browser-image-compression';
 import { supabase } from '../../services/supabase/client';
 import type { Barber, CreateBarberInput, UpdateBarberInput } from '../../types/scheduling';
 
@@ -23,6 +24,7 @@ export const BarberForm: React.FC<BarberFormProps> = ({ initial, shopId, onSave,
   const [phone, setPhone] = useState(initial.phone ?? '');
   const [email, setEmail] = useState(initial.email ?? '');
   const [color, setColor] = useState(initial.color ?? '#D4AF37');
+  const [displayOrder, setDisplayOrder] = useState(initial.display_order ?? 0);
   
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(initial.avatar_url ?? null);
@@ -53,13 +55,22 @@ export const BarberForm: React.FC<BarberFormProps> = ({ initial, shopId, onSave,
     let finalAvatarUrl = initial.avatar_url ?? null;
 
     if (fileToUpload) {
-      const ext = fileToUpload.name.split('.').pop();
-      const fileName = `${crypto.randomUUID()}.${ext}`;
-      const filePath = `${shopId}/${fileName}`;
+      try {
+        const options = {
+          maxSizeMB: 0.15,
+          maxWidthOrHeight: 600,
+          useWebWorker: true,
+          fileType: 'image/webp' as const
+        };
+        const compressedFile = await imageCompression(fileToUpload, options);
+        
+        const ext = compressedFile.name.split('.').pop() || 'jpg';
+        const fileName = `${crypto.randomUUID()}.${ext}`;
+        const filePath = `${shopId}/${fileName}`;
 
-      const { error } = await supabase.storage
-        .from('barber-avatars')
-        .upload(filePath, fileToUpload, { upsert: false });
+        const { error } = await supabase.storage
+          .from('barber-avatars')
+          .upload(filePath, compressedFile, { upsert: false });
 
       if (error) {
         alert('Erro ao fazer upload da imagem: ' + error.message);
@@ -72,6 +83,11 @@ export const BarberForm: React.FC<BarberFormProps> = ({ initial, shopId, onSave,
         .getPublicUrl(filePath);
 
       finalAvatarUrl = data.publicUrl;
+      } catch (err) {
+        alert('Erro ao comprimir ou enviar imagem.');
+        setUploading(false);
+        return;
+      }
     }
 
     onSave({
@@ -82,7 +98,9 @@ export const BarberForm: React.FC<BarberFormProps> = ({ initial, shopId, onSave,
       shop_id: shopId,
       profile_id: null,
       avatar_url: finalAvatarUrl,
-      is_active: initial.is_active ?? true
+      is_active: initial.is_active ?? true,
+      display_order: displayOrder,
+      is_featured: initial.is_featured ?? false
     });
   };
 
@@ -121,6 +139,10 @@ export const BarberForm: React.FC<BarberFormProps> = ({ initial, shopId, onSave,
         <div>
           <label className={labelCls}>E-mail</label>
           <input type="email" className={inputCls} value={email} onChange={e => setEmail(e.target.value)} placeholder="barbeiro@email.com" />
+        </div>
+        <div>
+          <label className={labelCls}>Ordem de Exibição (Home)</label>
+          <input type="number" className={inputCls} value={displayOrder} onChange={e => setDisplayOrder(parseInt(e.target.value) || 0)} placeholder="0" min="0" />
         </div>
       </div>
       <div>

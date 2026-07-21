@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import type { AdminPage } from '../AdminApp';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../services/supabase/client';
 
 interface NavItem {
   id: AdminPage;
@@ -37,6 +38,16 @@ interface AdminSidebarProps {
 
 const SidebarContent: React.FC<AdminSidebarProps> = ({ activePage, onNavigate, onMobileClose }) => {
   const { profile, staff, signOut } = useAuth();
+  const [shopData, setShopData] = React.useState<{ slug: string, name: string, logo_url: string | null } | null>(null);
+
+  React.useEffect(() => {
+    if (staff?.shop_id) {
+      supabase.from('shops').select('slug, name, logo_url').eq('id', staff.shop_id).single()
+        .then(({ data }) => {
+          if (data) setShopData(data);
+        });
+    }
+  }, [staff?.shop_id]);
 
   const handleLogout = async () => {
     await signOut();
@@ -57,11 +68,17 @@ const SidebarContent: React.FC<AdminSidebarProps> = ({ activePage, onNavigate, o
       {/* Logo */}
       <div className="px-5 pt-6 pb-4 border-b border-white/6">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 bg-[#D4AF37] rounded-md flex items-center justify-center">
-            <span className="text-[10px] font-black text-black">FS</span>
+          <div className={`w-7 h-7 rounded-md flex items-center justify-center overflow-hidden ${shopData?.logo_url ? 'bg-[#111] border border-white/10' : 'bg-[#D4AF37]'}`}>
+            {shopData?.logo_url ? (
+              <img src={shopData.logo_url} alt={shopData.name} className="w-full h-full object-contain p-0.5" />
+            ) : (
+              <span className="text-[10px] font-black text-black">
+                {shopData?.name ? shopData.name.substring(0, 2).toUpperCase() : 'FS'}
+              </span>
+            )}
           </div>
           <div>
-            <p className="text-[13px] font-bold text-white tracking-wide leading-none">F Street</p>
+            <p className="text-[13px] font-bold text-white tracking-wide leading-none">{shopData?.name || 'F Street'}</p>
             <p className="text-[10px] text-white/30 mt-0.5">Admin Panel</p>
           </div>
         </div>
@@ -101,7 +118,7 @@ const SidebarContent: React.FC<AdminSidebarProps> = ({ activePage, onNavigate, o
       {/* Footer */}
       <div className="px-4 py-4 border-t border-white/6 flex flex-col gap-2">
         <button
-          onClick={() => { window.location.href = '/'; }}
+          onClick={() => { window.location.href = shopData?.slug ? `/${shopData.slug}` : '/'; }}
           className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-white/35 hover:text-white/70 hover:bg-white/4 transition-all duration-150 cursor-pointer text-[12px] font-medium"
         >
           <ChevronRight className="w-3.5 h-3.5 rotate-180 text-white/30" />

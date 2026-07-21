@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, MessageCircle, Clock, CheckCircle, X, Calendar, User, Scissors, DollarSign, List, LayoutGrid } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MessageCircle, Clock, CheckCircle, X, Calendar, User, Scissors, DollarSign, List, LayoutGrid, Banknote, CreditCard, QrCode, Wallet, Edit2, History } from 'lucide-react';
 import { StatusBadge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useAuth } from '../../contexts/AuthContext';
-import { useAppointments, useCancelAppointment, useFinalizeAppointment, useUpdateAppointmentStatus } from '../../hooks/useAppointments';
+import { useAppointments, useFinalizeAppointment, useUpdateAppointmentStatus, useEditFinishedAppointment } from '../../hooks/useAppointments';
 import { useBarbers } from '../../hooks/useBarbers';
 import { useRealtimeAppointments } from '../../hooks/useRealtimeAppointments';
 import type { AppointmentWithDetails } from '../../types/scheduling';
 import { ConfirmDialog, Toast } from '../components/AdminDialogs';
+import { SelectDropdown } from '../components/ui/SelectDropdown';
+import { supabase } from '../../services/supabase/client';
 
 function formatDate(d: Date) { return d.toISOString().split('T')[0]; }
 function addDays(d: Date, n: number) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
@@ -48,7 +50,7 @@ export const AgendaPage: React.FC = () => {
   const { data: barbers = [] } = useBarbers(shopId);
 
   const finalizeMut = useFinalizeAppointment(shopId);
-  const cancelMut = useCancelAppointment(shopId);
+  const editMut = useEditFinishedAppointment(shopId);
   const statusMut = useUpdateAppointmentStatus(shopId);
 
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
@@ -58,42 +60,110 @@ export const AgendaPage: React.FC = () => {
   };
 
   const [drawerAppt, setDrawerAppt] = useState<AppointmentWithDetails | null>(null);
-  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+
   const [finalizeTarget, setFinalizeTarget] = useState<AppointmentWithDetails | null>(null);
+  const [isEditingFinished, setIsEditingFinished] = useState(false);
+  const [editStatus, setEditStatus] = useState<'completed' | 'cancelled' | 'no_show'>('completed');
+  
   const [finalPriceStr, setFinalPriceStr] = useState<string>('');
+  const [paymentMethod, setPaymentMethod] = useState<'cash'|'card'|'pix'|'mixed'|''>('');
+  const [paymentNotes, setPaymentNotes] = useState<string>('');
   const [priceWarning, setPriceWarning] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
+  const [drawerVisits, setDrawerVisits] = useState<number | null>(null);
+
+  React.useEffect(() => {
+    if (drawerAppt) {
+      setDrawerVisits(null);
+      supabase.from('appointments').select('*', { count: 'exact', head: true })
+        .eq('customer_id', drawerAppt.customer_id)
+        .eq('status', 'completed')
+        .then(({ count }) => setDrawerVisits(count || 0));
+    }
+  }, [drawerAppt?.customer_id]);
 
   const filteredAppointments = allAppointments.filter(a => {
     if (selectedBarber !== 'all' && a.barber_id !== selectedBarber) return false;
     return true;
   });
 
-  const handleCancel = async () => {
-    if (!cancelTarget) return;
+  const [statusAction, setStatusAction] = useState<{ id: string, type: 'cancelled' | 'no_show' } | null>(null);
+
+  const handleUpdateStatus = async () => {
+    if (!statusAction) return;
     try {
-      await cancelMut.mutateAsync(cancelTarget);
-      showToast('Agendamento cancelado.');
-      if (drawerAppt?.id === cancelTarget) setDrawerAppt(prev => prev ? { ...prev, status: 'canceled' } : null);
-    } catch (e: any) { showToast(e.message ?? 'Erro ao cancelar', 'error'); }
-    setCancelTarget(null);
+      await statusMut.mutateAsync({ id: statusAction.id, status: statusAction.type });
+      showToast(statusAction.type === 'cancelled' ? 'Agendamento cancelado.' : 'Marcado como não compareceu.');
+      if (drawerAppt?.id === statusAction.id) setDrawerAppt(prev => prev ? { ...prev, status: statusAction.type } : null);
+    } catch (e: any) { showToast(e.message ?? 'Erro ao atualizar', 'error'); }
+    setStatusAction(null);
   };
 
-  const handleFinalize = async () => {
+  const handleFinalize = async (statusType: 'pending' | 'paid') => {
     if (!finalizeTarget) return;
+    
+    // Se estiver editando e o status novo não for completed, ignora campos de pagamento.
+    if (isEditingFinished && editStatus !== 'completed') {
+      try {
+        await editMut.mutateAsync({
+          id: finalizeTarget.id,
+          staffId: staff?.id || '',
+          status: editStatus
+        });
+        showToast('Status atualizado com sucesso!');
+        if (drawerAppt?.id === finalizeTarget.id) {
+          setDrawerAppt(prev => prev ? { ...prev, status: editStatus, payment_status: 'pending' } : null);
+        }
+      } catch (e: any) { showToast(e.message ?? 'Erro ao atualizar', 'error'); }
+      setFinalizeTarget(null);
+      return;
+    }
+
+    if (statusType === 'paid' && !paymentMethod) {
+      showToast('Selecione uma forma de pagamento.', 'error');
+      return;
+    }
+    
     try {
       let price = parseFloat(finalPriceStr.replace(',', '.'));
       if (isNaN(price)) price = finalizeTarget.total_price;
       
-      if (price < 0.01) {
+      if (statusType === 'paid' && price < 0.01) {
         showToast('O valor mínimo deve ser R$ 0,01', 'error');
         return;
       }
       
-      await finalizeMut.mutateAsync({ id: finalizeTarget.id, finalPrice: price });
-      showToast('Atendimento finalizado!');
+      if (isEditingFinished) {
+        await editMut.mutateAsync({
+          id: finalizeTarget.id,
+          staffId: staff?.id || '',
+          status: 'completed',
+          finalPrice: statusType === 'paid' ? price : finalizeTarget.total_price,
+          paymentStatus: statusType,
+          paymentMethod: statusType === 'paid' ? (paymentMethod as 'cash'|'card'|'pix'|'mixed') : undefined,
+          paymentNotes: statusType === 'paid' && paymentMethod === 'mixed' ? paymentNotes : undefined
+        });
+        showToast('Agendamento atualizado!');
+      } else {
+        await finalizeMut.mutateAsync({ 
+          id: finalizeTarget.id, 
+          finalPrice: statusType === 'paid' ? price : finalizeTarget.total_price,
+          paymentStatus: statusType,
+          paymentMethod: statusType === 'paid' ? (paymentMethod as 'cash'|'card'|'pix'|'mixed') : undefined,
+          paymentNotes: statusType === 'paid' && paymentMethod === 'mixed' ? paymentNotes : undefined
+        });
+        showToast(statusType === 'paid' ? 'Pagamento confirmado!' : 'Marcado como pendente!');
+      }
+
       if (drawerAppt?.id === finalizeTarget.id) {
-        setDrawerAppt(prev => prev ? { ...prev, status: 'completed', total_price: price } : null);
+        setDrawerAppt(prev => prev ? { 
+          ...prev, 
+          status: 'completed', 
+          payment_status: statusType,
+          total_price: statusType === 'paid' ? price : finalizeTarget.total_price,
+          payment_method: statusType === 'paid' ? (paymentMethod as any) : undefined,
+          payment_notes: statusType === 'paid' ? paymentNotes : undefined
+        } : null);
       }
     } catch (e: any) { showToast(e.message ?? 'Erro ao finalizar', 'error'); }
     setFinalizeTarget(null);
@@ -323,7 +393,7 @@ export const AgendaPage: React.FC = () => {
                     <a href={`https://wa.me/${drawerAppt.customer?.phone?.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 hover:bg-emerald-500/20 transition-colors cursor-pointer"><MessageCircle className="w-5 h-5" /></a>
                   </div>
                   <div className="mt-4 pt-4 border-t border-white/5 flex items-center gap-4 text-[11px] text-white/40">
-                    <p><strong>{drawerAppt.customer?.total_visits}</strong> visitas ao total</p>
+                    <p><strong>{drawerVisits !== null ? drawerVisits : '...'}</strong> visitas concluídas ao total</p>
                   </div>
                 </div>
 
@@ -358,14 +428,46 @@ export const AgendaPage: React.FC = () => {
                       <CheckCircle className="w-4 h-4" /> Confirmar Presença
                     </button>
                   )}
-                  <button onClick={() => {
-                    setFinalizeTarget(drawerAppt);
-                    setFinalPriceStr(drawerAppt.total_price.toFixed(2));
-                  }} className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[13px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20">
+                  <button
+                    onClick={() => {
+                      setIsEditingFinished(false);
+                      setEditStatus('completed');
+                      setFinalPriceStr(drawerAppt.total_price.toFixed(2));
+                      setPriceWarning(null);
+                      setPaymentMethod('');
+                      setPaymentNotes('');
+                      setFinalizeTarget(drawerAppt);
+                    }}
+                    className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[13px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
+                  >
                     <CheckCircle className="w-5 h-5" /> Finalizar Atendimento
                   </button>
-                  <button onClick={() => setCancelTarget(drawerAppt.id)} className="w-full py-3.5 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 font-bold text-[13px] tracking-widest uppercase transition-all cursor-pointer">
-                    Cancelar / Não Compareceu
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={() => setStatusAction({ id: drawerAppt.id, type: 'cancelled' })} className="w-full py-3 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/10 font-bold text-[12px] tracking-widest uppercase transition-all cursor-pointer">
+                      Cancelar
+                    </button>
+                    <button onClick={() => setStatusAction({ id: drawerAppt.id, type: 'no_show' })} className="w-full py-3 rounded-xl border border-neutral-500/30 text-neutral-400 hover:bg-neutral-500/10 font-bold text-[12px] tracking-widest uppercase transition-all cursor-pointer">
+                      Faltou
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {(drawerAppt.status === 'completed' || drawerAppt.status === 'cancelled' || drawerAppt.status === 'no_show') && (
+                <div className="p-6 border-t border-white/10 bg-[#111] space-y-3">
+                  <button
+                    onClick={() => {
+                      setIsEditingFinished(true);
+                      setEditStatus(drawerAppt.status as any);
+                      setFinalPriceStr(drawerAppt.total_price.toFixed(2));
+                      setPriceWarning(null);
+                      setPaymentMethod(drawerAppt.payment_method || '');
+                      setPaymentNotes(drawerAppt.payment_notes || '');
+                      setFinalizeTarget(drawerAppt);
+                    }}
+                    className="w-full py-3.5 rounded-xl border border-white/20 text-white/70 hover:bg-white/5 font-bold text-[13px] tracking-widest uppercase transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Edit2 className="w-4 h-4" /> Editar Status / Pagamento
                   </button>
                 </div>
               )}
@@ -375,7 +477,7 @@ export const AgendaPage: React.FC = () => {
       </AnimatePresence>
 
       {/* Dialogs */}
-      <ConfirmDialog isOpen={!!cancelTarget} title="Cancelar Agendamento" message="Tem certeza que deseja cancelar? O horário ficará livre novamente." confirmLabel="Sim, Cancelar" danger onConfirm={handleCancel} onCancel={() => setCancelTarget(null)} />
+      <ConfirmDialog isOpen={!!statusAction} title={statusAction?.type === 'cancelled' ? "Cancelar Agendamento" : "Marcar como Faltou"} message={statusAction?.type === 'cancelled' ? "Tem certeza que deseja cancelar? O horário ficará livre novamente." : "O cliente não compareceu? O horário será liberado."} confirmLabel="Sim" danger={statusAction?.type === 'cancelled'} onConfirm={handleUpdateStatus} onCancel={() => setStatusAction(null)} />
       <ConfirmDialog isOpen={!!confirmTarget} title="Confirmar Presença" message="Marcar este agendamento como confirmado?" confirmLabel="Confirmar" onConfirm={handleConfirmStatus} onCancel={() => setConfirmTarget(null)} />
       
       {/* Finalize Dialog Custom */}
@@ -384,32 +486,87 @@ export const AgendaPage: React.FC = () => {
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setFinalizeTarget(null)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl p-6 shadow-2xl">
-              <h3 className="text-lg font-bold text-white mb-2">Finalizar Atendimento</h3>
-              <p className="text-sm text-white/50 mb-6">Confirme o valor final cobrado do cliente.</p>
+              <h3 className="text-lg font-bold text-white mb-2">{isEditingFinished ? 'Editar Agendamento' : 'Finalizar Atendimento'}</h3>
+              <p className="text-sm text-white/50 mb-6">{isEditingFinished ? 'Altere o status ou os dados financeiros.' : 'Confirme o valor final cobrado do cliente.'}</p>
               
-              <div className="mb-6">
-                <label className="block text-[11px] font-bold uppercase tracking-widest text-white/30 mb-2">Valor Final (R$)</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold">R$</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    value={finalPriceStr}
-                    onChange={(e) => handlePriceChange(e.target.value)}
+              {isEditingFinished && (
+                <div className="mb-6">
+                  <label className="block text-[11px] font-bold uppercase tracking-widest text-white/30 mb-2">Status</label>
+                  <SelectDropdown
+                    value={editStatus}
+                    onChange={(v) => setEditStatus(v as any)}
+                    options={[
+                      { value: 'completed', label: 'Concluído', icon: <CheckCircle className="w-4 h-4" /> },
+                      { value: 'cancelled', label: 'Cancelado', icon: <X className="w-4 h-4" /> },
+                      { value: 'no_show', label: 'Faltou', icon: <History className="w-4 h-4" /> }
+                    ]}
+                  />
+                </div>
+              )}
+
+              {(!isEditingFinished || editStatus === 'completed') && (
+                <>
+                  <div className="mb-6">
+                    <label className="block text-[11px] font-bold uppercase tracking-widest text-white/30 mb-2">Valor Final (R$)</label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 font-bold">R$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value={finalPriceStr}
+                        onChange={(e) => handlePriceChange(e.target.value)}
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white font-bold text-lg focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
                   />
                 </div>
                 {priceWarning && <p className="text-amber-400 text-[11px] mt-2 font-semibold">{priceWarning}</p>}
               </div>
 
-              <div className="flex gap-3">
-                <button onClick={() => setFinalizeTarget(null)} className="flex-1 py-3 rounded-xl border border-white/10 text-white/70 hover:text-white hover:bg-white/5 font-bold text-[13px] transition-all">
-                  Voltar
-                </button>
-                <button onClick={handleFinalize} className="flex-1 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[13px] shadow-lg shadow-emerald-500/20 transition-all">
-                  Finalizar
-                </button>
+              <div className="mb-6">
+                <label className="block text-[11px] font-bold uppercase tracking-widest text-white/30 mb-2">Forma de Pagamento *</label>
+                <SelectDropdown
+                  value={paymentMethod}
+                  onChange={(v) => setPaymentMethod(v as any)}
+                  placeholder="Selecione..."
+                  options={[
+                    { value: 'cash', label: 'Dinheiro', icon: <Banknote className="w-4 h-4" /> },
+                    { value: 'pix', label: 'Pix', icon: <QrCode className="w-4 h-4" /> },
+                    { value: 'card', label: 'Cartão', icon: <CreditCard className="w-4 h-4" /> },
+                    { value: 'mixed', label: 'Misto (Ex: Dinheiro + Pix)', icon: <Wallet className="w-4 h-4" /> }
+                  ]}
+                />
+              </div>
+
+              {paymentMethod === 'mixed' && (
+                <div className="mb-6">
+                  <label className="block text-[11px] font-bold uppercase tracking-widest text-white/30 mb-2">Detalhes da Divisão</label>
+                  <input
+                    type="text"
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    placeholder="Ex: R$ 20 Pix + R$ 30 Dinheiro"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-[13px] text-white placeholder:text-white/20 focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] transition-all"
+                  />
+                </div>
+              )}
+              </>
+              )}
+
+              <div className="flex gap-2">
+                {isEditingFinished && editStatus !== 'completed' ? (
+                  <button onClick={() => handleFinalize('pending')} className="w-full py-3 rounded-xl bg-[#D4AF37] hover:bg-[#D4AF37]/90 text-black font-bold text-[11px] uppercase tracking-widest transition-all">
+                    Salvar Alterações
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={() => handleFinalize('pending')} className="flex-1 py-3 rounded-xl border border-amber-500/20 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 font-bold text-[11px] uppercase tracking-widest transition-all">
+                      Marcar Pendente
+                    </button>
+                    <button onClick={() => handleFinalize('paid')} className="flex-[2] py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[11px] uppercase tracking-widest shadow-lg shadow-emerald-500/20 transition-all">
+                      Confirmar Pagamento
+                    </button>
+                  </>
+                )}
               </div>
             </motion.div>
           </div>

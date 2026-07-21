@@ -9,7 +9,7 @@ export const availabilityService = {
       .from('appointments')
       .select('id')
       .eq('barber_id', barberId)
-      .neq('status', 'canceled')
+      .neq('status', 'cancelled')
       .lt('start_time', endIso)
       .gt('end_time', startIso)
       .limit(1);
@@ -38,7 +38,7 @@ export const availabilityService = {
       .from('appointments')
       .select('barber_id')
       .eq('shop_id', shopId)
-      .neq('status', 'canceled')
+      .neq('status', 'cancelled')
       .lt('start_time', endIso)
       .gt('end_time', startIso);
 
@@ -62,7 +62,7 @@ export const availabilityService = {
     const fromDate = new Date(`${dateStr}T00:00:00`).toISOString();
     const toDate = new Date(`${dateStr}T23:59:59`).toISOString();
     
-    let query = supabase.from('appointments').select('start_time, end_time').eq('shop_id', shopId).gte('start_time', fromDate).lte('start_time', toDate).neq('status', 'canceled');
+    let query = supabase.from('appointments').select('start_time, end_time').eq('shop_id', shopId).gte('start_time', fromDate).lte('start_time', toDate).neq('status', 'cancelled');
     if (barberId !== 'first-available') {
       query = query.eq('barber_id', barberId);
     }

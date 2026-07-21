@@ -149,9 +149,12 @@ export const publicApi = {
       return { data: null, error: e.message };
     }
   },
-  async listServices(shopId: string): Promise<ApiResult<any[]>> {
+  async listServices(shopId: string, barberId?: string | null): Promise<ApiResult<any[]>> {
     try {
-      const { data, error } = await supabase.rpc('get_public_services', { p_shop_id: shopId });
+      const { data, error } = await supabase.rpc('get_public_services', {
+        p_shop_id: shopId,
+        p_barber_id: barberId ?? null,
+      });
       if (error) throw error;
       return { data: data || [], error: null };
     } catch (e: any) {

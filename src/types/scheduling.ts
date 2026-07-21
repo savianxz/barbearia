@@ -10,6 +10,8 @@ export interface Barber {
   avatar_url: string | null;
   color: string;
   is_active: boolean;
+  display_order: number;
+  is_featured: boolean;
   created_at: string;
 }
 
@@ -24,6 +26,9 @@ export interface Service {
   price: number;
   is_active: boolean;
   created_at: string;
+  is_combo?: boolean;
+  combo_includes?: string | null;
+  exclusive_barber_id?: string | null;
 }
 
 export type CreateServiceInput = Omit<Service, 'id' | 'created_at'>;
@@ -37,15 +42,13 @@ export interface Customer {
   name: string;
   phone: string;
   email: string | null;
-  total_visits: number;
-  total_spent: number;
-  last_visit: string | null;
+  is_club_member: boolean;
   created_at: string;
 }
 
 // ─── AGENDAMENTOS ──────────────────────────────────────────────
 
-export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'canceled';
+export type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
 
 export interface Appointment {
   id: string;
@@ -56,6 +59,9 @@ export interface Appointment {
   start_time: string;
   end_time: string;
   status: AppointmentStatus;
+  payment_status?: 'pending' | 'paid';
+  payment_method?: 'cash' | 'card' | 'pix' | 'mixed';
+  payment_notes?: string;
   total_price: number;
   notes: string | null;
   created_at: string;
@@ -63,7 +69,7 @@ export interface Appointment {
 
 // Representação estendida (com joins) comumente usada na UI
 export interface AppointmentWithDetails extends Appointment {
-  customer: Pick<Customer, 'name' | 'phone' | 'total_visits'>;
+  customer: Pick<Customer, 'name' | 'phone'>;
   barber: Pick<Barber, 'name' | 'color'>;
   service: Pick<Service, 'name' | 'duration_minutes'>;
 }

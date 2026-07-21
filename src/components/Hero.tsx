@@ -127,12 +127,12 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
         </motion.div>
       </div>
 
-      {/* Scroll indicator — hidden on mobile to save space */}
+      {/* Scroll indicator */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.1, duration: 0.6 }}
-        className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 hidden sm:flex flex-col items-center gap-1.5 cursor-pointer"
+        className="absolute bottom-6 sm:bottom-10 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5 cursor-pointer"
         onClick={() => document.getElementById('sobre')?.scrollIntoView({ behavior: 'smooth' })}
       >
         <span className="text-[9px] uppercase font-bold tracking-[0.3em] text-text-secondary">Scroll</span>

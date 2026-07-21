@@ -159,11 +159,10 @@ export const useBooking = (shopId?: string) => {
       shop_id: shopId,
       customer_name: customerDetails.name,
       customer_phone: customerDetails.whatsapp,
+      customer_email: customerDetails.email || undefined,
       barber_id: actualBarberId,
       service_id: booking.service.id,
       start_time: startIso,
-      end_time: endIso,
-      total_price: booking.service.price,
     });
 
     setIsSubmitting(false);

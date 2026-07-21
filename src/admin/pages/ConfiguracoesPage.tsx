@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Save, Plus, CheckCircle, AlertCircle, Clock, Users, Scissors, CalendarCheck, Info } from 'lucide-react';
+import { Save, Plus, CheckCircle, AlertCircle, Clock, Users, Scissors, CalendarCheck, Info, Upload } from 'lucide-react';
+import imageCompression from 'browser-image-compression';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../services/supabase/client';
 import { settingsService } from '../../services/settings';
 import type { ShopSettings, Barber, Service } from '../../types/settings';
 import { Modal } from '../components/AdminDialogs';
@@ -42,6 +44,9 @@ export const ConfiguracoesPage: React.FC = () => {
   const [isBarberModalOpen, setIsBarberModalOpen] = useState(false);
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
 
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
   const createBarberMutation = useCreateBarber(shopId || '');
   const createServiceMutation = useCreateService(shopId || '');
 
@@ -79,6 +84,9 @@ export const ConfiguracoesPage: React.FC = () => {
         s.setup_progress = { informacoes: false, horarios: false, equipe: false, servicos: false, agenda: false };
       }
       setSettings(s);
+      if (s.logo_url && !logoPreview) {
+        setLogoPreview(s.logo_url);
+      }
     }
     if (barbersRes.data) setBarbers(barbersRes.data);
     if (servicesRes.data) setServices(servicesRes.data);
@@ -101,6 +109,45 @@ export const ConfiguracoesPage: React.FC = () => {
     if (!shopId || !settings) return;
     setSaving(true);
     
+    let finalLogoUrl = settings.logo_url;
+
+    if (logoFile && completeStep === 'informacoes') {
+      try {
+        const options = {
+          maxSizeMB: 0.15,
+          maxWidthOrHeight: 400,
+          useWebWorker: true,
+          fileType: 'image/webp' as const
+        };
+        const compressedFile = await imageCompression(logoFile, options);
+        
+        const ext = compressedFile.name.split('.').pop() || 'jpg';
+        const fileName = `logo_${Date.now()}.${ext}`;
+        const filePath = `${shopId}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('shop-logos')
+          .upload(filePath, compressedFile, { upsert: true });
+
+      if (uploadError) {
+        showError('Erro ao fazer upload da logo: ' + uploadError.message);
+        setSaving(false);
+        return;
+      }
+
+      const { data } = supabase.storage
+        .from('shop-logos')
+        .getPublicUrl(filePath);
+
+      finalLogoUrl = data.publicUrl;
+      updates.logo_url = finalLogoUrl;
+      } catch (err) {
+        showError('Erro ao comprimir ou enviar logo.');
+        setSaving(false);
+        return;
+      }
+    }
+
     const newSettings = { ...settings, ...updates };
     
     if (completeStep) {
@@ -218,6 +265,44 @@ export const ConfiguracoesPage: React.FC = () => {
                 <div>
                   <h2 className="text-lg font-bold text-white">Informações da Barbearia</h2>
                   <p className="text-[12px] text-white/40 mt-1">Dados públicos que aparecem para seus clientes.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-5">
+                <div className="relative group flex-shrink-0">
+                  <div 
+                    className="w-20 h-20 rounded-2xl overflow-hidden flex items-center justify-center font-bold text-3xl text-[#D4AF37] border border-white/10 bg-[#0D0D0D] font-mono tracking-widest"
+                  >
+                    {logoPreview ? (
+                      <img src={logoPreview} alt="Preview" className="w-full h-full object-contain" />
+                    ) : (
+                      <Scissors className="w-8 h-8 text-[#D4AF37]" />
+                    )}
+                  </div>
+                  <label className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-2xl">
+                    <Upload className="w-5 h-5 text-white" />
+                    <input 
+                      type="file" 
+                      accept=".jpg,.jpeg,.png,.webp,.svg" 
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 2 * 1024 * 1024) {
+                          showError('O logo deve ter no máximo 2MB.');
+                          return;
+                        }
+                        setLogoPreview(URL.createObjectURL(file));
+                        setLogoFile(file);
+                      }} 
+                      className="hidden" 
+                    />
+                  </label>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Logo da Barbearia</h3>
+                  <p className="text-[11px] text-white/40 mt-1 max-w-xs">
+                    Recomendado: 500x500px (JPG, PNG, WebP). Tamanho máximo 2MB.
+                  </p>
                 </div>
               </div>
 
